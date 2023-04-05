@@ -2,11 +2,6 @@ const std = @import("std");
 const token = @import("token.zig");
 const eql = std.mem.eql;
 
-pub const Token = union(enum) {
-    Plaintext: []const u8,
-    Header: struct { level: usize, str: []const u8, label: ?[]const u8 },
-};
-
 pub const Lexer = struct {
     source: [:0]const u8 = "",
     ch: []const u8,
