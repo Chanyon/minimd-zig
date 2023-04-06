@@ -87,14 +87,19 @@ pub const Lexer = struct {
     fn string(self: *Lexer) token.Token {
         const pos = self.pos;
         // abcdefgh\n;
-        while (!eql(u8, self.ch, "\n") and !self.isAnd()) {
+        while (!eql(u8, self.ch, "\n") and !self.isEnd()) {
             self.readChar();
         }
-        const str = self.source[pos - 1 .. self.read_pos];
+        var str: []const u8 = undefined;
+        if (eql(u8, self.ch, "\n")) {
+            str = self.source[pos - 1 .. self.read_pos - 1];
+            return token.newToken(.TK_STR, str, null);
+        }
+        str = self.source[pos - 1 .. self.read_pos];
         return token.newToken(.TK_STR, str, null);
     }
 
-    fn isAnd(self: *Self) bool {
+    fn isEnd(self: *Self) bool {
         return eql(u8, self.ch, "");
     }
 };
@@ -220,7 +225,7 @@ test "lexer string" {
 }
 
 test "lexer string" {
-    var lexer = Lexer.newLexer("qwer");
+    var lexer = Lexer.newLexer("qwer\n");
     const tk = lexer.nextToken();
     // std.debug.print("{s}\n", .{tk.literal});
     try std.testing.expect(eql(u8, tk.literal, "qwer"));
@@ -228,11 +233,11 @@ test "lexer string" {
 }
 
 test "lexer # Heading" {
-    var lexer = Lexer.newLexer("# Heading");
+    var lexer = Lexer.newLexer("# Heading\n");
     var tk = lexer.nextToken();
     // std.debug.print("{s}\n", .{tk.literal});
     try std.testing.expect(eql(u8, tk.literal, "#"));
-    
+
     tk = lexer.nextToken();
     // std.debug.print("space `{s}`\n", .{tk.literal});
     try std.testing.expect(eql(u8, tk.literal, " "));
@@ -240,4 +245,7 @@ test "lexer # Heading" {
     tk = lexer.nextToken();
     // std.debug.print("`{s}`\n", .{tk.literal});
     try std.testing.expect(eql(u8, tk.literal, "Heading"));
+
+    tk = lexer.nextToken();
+    try std.testing.expect(eql(u8, tk.literal, "<br>"));
 }
