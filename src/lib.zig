@@ -1,12 +1,12 @@
 const std = @import("std");
-const testing = std.testing;
-
-export fn add(a: i32, b: i32) i32 {
-    return a + b;
+const Lexer = @import("lexer.zig").Lexer;
+const Parser = @import("parse.zig").Parser;
+// markdown parser
+pub fn parser(allocator: std.mem.Allocator, source: []const u8) !Parser {
+    var lexer = Lexer.newLexer(source);
+    var p = Parser.NewParser(&lexer, allocator);
+    defer p.deinit();
+    
+    try p.parseProgram();
+    return p;
 }
-
-test "basic add functionality" {
-    try testing.expect(add(3, 7) == 10);
-}
-
-// parser

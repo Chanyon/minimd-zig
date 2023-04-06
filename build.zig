@@ -21,6 +21,11 @@ pub fn build(b: *std.build.Builder) void {
     const lexer_step = b.step("test_lex", "test lexer");
     lexer_step.dependOn(&lexer_test.step);
 
+    const parser_test = b.addTest("src/parse.zig");
+    iter_test.setBuildMode(mode);
+    const parser_step = b.step("test_parse", "test parser");
+    parser_step.dependOn(&parser_test.step);
+
     const main_tests = b.addTest("src/lib.zig");
     main_tests.setBuildMode(mode);
 
