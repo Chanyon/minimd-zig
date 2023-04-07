@@ -48,6 +48,7 @@ pub const Parser = struct {
         switch (self.prev_token.ty) {
             .TK_WELLNAME => try self.parseWellName(),
             .TK_STR => try self.parseText(),
+            .TK_ASTERISKS => try self.parseStrong(),
             else => {},
         }
     }
@@ -64,7 +65,7 @@ pub const Parser = struct {
         }
 
         if (level > 6) {
-          try self.out.append("<p>");
+            try self.out.append("<p>");
             var i: usize = 0;
             while (!self.curTokenIs(.TK_BR) and self.cur_token.ty != .TK_EOF) {
                 while (i <= level - 1) : (i += 1) {
@@ -113,12 +114,17 @@ pub const Parser = struct {
     // \\world
     // \\
     // \\# heading
+    //? NOT:Line Break("  "=><br> || \n=><br>)
     fn parseText(self: *Parser) !void {
         try self.out.append("<p>");
         try self.out.append(self.prev_token.literal);
 
         self.nextToken();
-        // std.debug.print("{any}==>{s}\n", .{self.cur_token.ty, self.cur_token.literal});
+        // hello**test**world
+        if (self.cur_token.ty == .TK_ASTERISKS) {
+          try self.parseStrong();
+        }
+
         while (!self.peekOtherTokenIs(self.cur_token.ty) and self.cur_token.ty != .TK_EOF) {
             while (self.curTokenIs(.TK_BR)) {
               self.nextToken();
@@ -131,6 +137,46 @@ pub const Parser = struct {
         }
         try self.out.append("</p>");
         return;
+    }
+
+    /// **Bold**
+    /// *Bold*
+    /// ***Bold***
+    fn parseStrong(self: *Parser) !void {
+      var level:usize = self.prev_token.level.?;
+      while (self.curTokenIs(.TK_ASTERISKS)) {
+        level += 1;
+        self.nextToken();
+      }
+
+      if (level == 1) {
+        try self.out.append("<>");
+      } else if (level ==  2) {
+        try self.out.append("<strong>");
+      } else {
+        try self.out.append("<strong><em>");
+      }
+
+      while (!self.curTokenIs(.TK_ASTERISKS)) {
+        if (self.curTokenIs(.TK_BR)) {
+          self.nextToken();
+          continue;
+        }
+        try self.out.append(self.cur_token.literal);
+        self.nextToken();
+      }
+      while (self.cur_token.ty == .TK_ASTERISKS) {
+        self.nextToken();
+      }
+
+      if (level == 1) {
+        try self.out.append("</em>");
+      } else if (level ==  2) {
+        try self.out.append("</strong>");
+      } else {
+        try self.out.append("</em></strong>");
+      }
+      return;
     }
 
     fn curTokenIs(self: *Parser, token: TokenType) bool {
@@ -294,3 +340,82 @@ test "parser text 3" {
     // std.debug.print("{s} \n", .{res});
     try std.testing.expect(std.mem.eql(u8, res, "<p>hello</p><h1>test</h1>"));
 }
+
+test "parser strong **Bold** 1" {
+    var gpa = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    const al = gpa.allocator();
+    defer gpa.deinit();
+    const text =
+    \\**hello**
+    \\*** world ***
+    ;
+    var lexer = Lexer.newLexer(text);
+    var parser = Parser.NewParser(&lexer, al);
+    defer parser.deinit();
+    try parser.parseProgram();
+
+    const str = try std.mem.join(al, "", parser.out.items);
+    const res = str[0..str.len];
+    // std.debug.print("{s} \n", .{res});
+    try std.testing.expect(std.mem.eql(u8, res, "<strong>hello</strong><strong><em> world </em></strong>"));
+}
+
+test "parser strong **Bold** 2" {
+    var gpa = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    const al = gpa.allocator();
+    defer gpa.deinit();
+    const text =
+    \\**hello**
+    \\# heading
+    \\*** world ***
+    ;
+    var lexer = Lexer.newLexer(text);
+    var parser = Parser.NewParser(&lexer, al);
+    defer parser.deinit();
+    try parser.parseProgram();
+
+    const str = try std.mem.join(al, "", parser.out.items);
+    const res = str[0..str.len];
+    // std.debug.print("{s} \n", .{res});
+    try std.testing.expect(std.mem.eql(u8, res, "<strong>hello</strong><h1>heading</h1><strong><em> world </em></strong>"));
+}
+
+test "parser text and strong **Bold** 3" {
+    var gpa = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    const al = gpa.allocator();
+    defer gpa.deinit();
+    const text =
+    \\hello**test
+    \\**world!
+    \\
+    ;
+    var lexer = Lexer.newLexer(text);
+    var parser = Parser.NewParser(&lexer, al);
+    defer parser.deinit();
+    try parser.parseProgram();
+
+    const str = try std.mem.join(al, "", parser.out.items);
+    const res = str[0..str.len];
+    // std.debug.print("{s} \n", .{res});
+    try std.testing.expect(std.mem.eql(u8, res, "<p>hello<strong>test</strong>world!</p>"));
+}
+
+//TODO:
+// test "parser strong __Bold__ 1" {
+//     var gpa = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+//     const al = gpa.allocator();
+//     defer gpa.deinit();
+//     const text =
+//     \\__hello__
+//     \\
+//     ;
+//     var lexer = Lexer.newLexer(text);
+//     var parser = Parser.NewParser(&lexer, al);
+//     defer parser.deinit();
+//     try parser.parseProgram();
+
+//     const str = try std.mem.join(al, "", parser.out.items);
+//     const res = str[0..str.len];
+//     // std.debug.print("{s} \n", .{res});
+//     try std.testing.expect(std.mem.eql(u8, res, "<strong>hello</strong>"));
+// }

@@ -31,11 +31,11 @@ pub const Lexer = struct {
         } else if (eql(u8, ch, "\n")) {
             return token.newToken(.TK_BR, "<br>", null);
         } else if (eql(u8, ch, "*")) {
-            return token.newToken(.TK_ASTERISKS, "*", null);
+            return token.newToken(.TK_ASTERISKS, "*", 1);
         } else if (eql(u8, ch, "|")) {
             return token.newToken(.TK_VERTICAL, "|", null);
         } else if (eql(u8, ch, "_")) {
-            return token.newToken(.TK_UNDERLINE, "_", null);
+            return token.newToken(.TK_UNDERLINE, "_", 1);
         } else if (eql(u8, ch, "#")) {
             return token.newToken(.TK_WELLNAME, "#", 1);
         } else if (eql(u8, ch, " ")) {
@@ -87,11 +87,11 @@ pub const Lexer = struct {
     fn string(self: *Lexer) token.Token {
         const pos = self.pos;
         // abcdefgh\n;
-        while (!eql(u8, self.ch, "\n") and !self.isEnd()) {
+        while (!eql(u8, self.ch, "\n") and !eql(u8, self.ch, "*")  and !self.isEnd()) {
             self.readChar();
         }
         var str: []const u8 = undefined;
-        if (eql(u8, self.ch, "\n")) {
+        if (eql(u8, self.ch, "\n") or eql(u8, self.ch, "*")) {
             str = self.source[pos - 1 .. self.read_pos - 1];
             return token.newToken(.TK_STR, str, null);
         }
