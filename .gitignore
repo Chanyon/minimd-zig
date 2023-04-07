@@ -1,3 +1,4 @@
 .vscode/
+tests/
 zig-cache/
 zig-out/
