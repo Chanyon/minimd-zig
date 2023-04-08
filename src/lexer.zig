@@ -27,7 +27,7 @@ pub const Lexer = struct {
         if (eql(u8, ch, "+")) {
             return token.newToken(.TK_PLUS, "+", null);
         } else if (eql(u8, ch, "-")) {
-            return token.newToken(.TK_MINUS, "-", null);
+            return token.newToken(.TK_MINUS, "-", 1);
         } else if (eql(u8, ch, "\n")) {
             return token.newToken(.TK_BR, "<br>", null);
         } else if (eql(u8, ch, "*")) {

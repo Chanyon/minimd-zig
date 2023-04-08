@@ -38,18 +38,20 @@ pub const Parser = struct {
     }
 
     pub fn parseProgram(self: *Parser) !void {
-        while (!self.curTokenIs(.TK_EOF)) {
+        while (self.prev_token.ty != .TK_EOF) {
             try self.parseStatement();
             self.nextToken();
         }
     }
 
     fn parseStatement(self: *Parser) !void {
+				// std.debug.print("state: {any}==>{s}\n", .{ self.prev_token.ty, self.prev_token.literal });
         switch (self.prev_token.ty) {
             .TK_WELLNAME => try self.parseWellName(),
             .TK_STR => try self.parseText(),
             .TK_ASTERISKS => try self.parseStrong(),
             .TK_GT => try self.parseQuote(),
+            .TK_MINUS => try self.parseBlankLine(),
             else => {},
         }
     }
@@ -136,6 +138,7 @@ pub const Parser = struct {
             try self.out.append(self.cur_token.literal);
             self.nextToken();
         }
+
         try self.out.append("</p>");
         return;
     }
@@ -151,14 +154,20 @@ pub const Parser = struct {
         }
 
         if (level == 1) {
-            try self.out.append("<>");
+            try self.out.append("<ul>");
         } else if (level == 2) {
             try self.out.append("<strong>");
         } else {
+            //*** => <hr/>
+            if (self.curTokenIs(.TK_BR)) {
+                // std.debug.print("{any}==>{s}\n", .{ self.cur_token.ty, self.cur_token.literal });
+                try self.out.append("<hr/>");
+                return;
+            }
             try self.out.append("<strong><em>");
         }
 
-        while (!self.curTokenIs(.TK_ASTERISKS)) {
+        while (!self.curTokenIs(.TK_ASTERISKS) and !self.curTokenIs(.TK_EOF)) {
             if (self.curTokenIs(.TK_BR)) {
                 self.nextToken();
                 continue;
@@ -166,17 +175,20 @@ pub const Parser = struct {
             try self.out.append(self.cur_token.literal);
             self.nextToken();
         }
-        while (self.cur_token.ty == .TK_ASTERISKS) {
-            self.nextToken();
-        }
 
-        if (level == 1) {
-            try self.out.append("</em>");
-        } else if (level == 2) {
-            try self.out.append("</strong>");
-        } else {
-            try self.out.append("</em></strong>");
+        if (self.curTokenIs(.TK_ASTERISKS)) {
+            while (self.cur_token.ty == .TK_ASTERISKS) {
+                self.nextToken();
+            }
+						if (level == 1) {
+								try self.out.append("</em>");
+						} else if (level == 2) {
+								try self.out.append("</strong>");
+						} else {
+								try self.out.append("</em></strong>");
+						}
         }
+				// std.debug.print("{any}==>{s}\n", .{ self.cur_token.ty, self.cur_token.literal });
         return;
     }
 
@@ -195,7 +207,6 @@ pub const Parser = struct {
                     self.nextToken();
                     self.nextToken();
                     try self.parseWellName();
-                    std.debug.print("{any}==>{s}\n", .{ self.cur_token.ty, self.cur_token.literal });
                 },
                 .TK_ASTERISKS => {
                     self.nextToken();
@@ -223,6 +234,23 @@ pub const Parser = struct {
             self.nextToken();
         }
         try self.out.append("</blockquote>");
+        return;
+    }
+
+    fn parseBlankLine(self: *Parser) !void {
+        var level: usize = self.prev_token.level.?;
+        while (self.curTokenIs(.TK_MINUS)) {
+            level += 1;
+            self.nextToken();
+        }
+
+        if (level >= 3) {
+            try self.out.append("<hr/>");
+						while (self.curTokenIs(.TK_BR)) {
+							self.nextToken();
+						}
+        }
+        std.debug.print("{any}==>{s}\n", .{ self.prev_token.ty, self.cur_token.literal });
         return;
     }
 
@@ -531,4 +559,68 @@ test "parser text and quote grammar 3" {
     const res = str[0..str.len];
     // std.debug.print("{s} \n", .{res});
     try std.testing.expect(std.mem.eql(u8, res, "<blockquote><h6>hello</h6><p>#world</p><strong>test</strong><blockquote> test2</blockquote></blockquote>"));
+}
+
+test "parser blankline" {
+    var gpa = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    const al = gpa.allocator();
+    defer gpa.deinit();
+    const text =
+        \\---
+        \\
+    ;
+    var lexer = Lexer.newLexer(text);
+    var parser = Parser.NewParser(&lexer, al);
+    defer parser.deinit();
+    try parser.parseProgram();
+
+    const str = try std.mem.join(al, "", parser.out.items);
+    const res = str[0..str.len];
+    // std.debug.print("{s} \n", .{res});
+    try std.testing.expect(std.mem.eql(u8, res, "<hr/>"));
+}
+
+test "parser blankline 2" {
+    var gpa = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    const al = gpa.allocator();
+    defer gpa.deinit();
+    const text =
+        \\****
+        \\---
+				\\
+				\\hello
+				\\
+    ;
+    var lexer = Lexer.newLexer(text);
+    var parser = Parser.NewParser(&lexer, al);
+    defer parser.deinit();
+    try parser.parseProgram();
+
+    const str = try std.mem.join(al, "", parser.out.items);
+    const res = str[0..str.len];
+    // std.debug.print("{s} \n", .{res});
+    try std.testing.expect(std.mem.eql(u8, res, "<hr/><hr/><p>hello</p>"));
+}
+
+test "parser blankline 3" {
+    var gpa = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    const al = gpa.allocator();
+    defer gpa.deinit();
+    const text =
+        \\***nihhha***
+				\\
+				\\***
+				\\---
+				\\awerwe---
+				\\
+    ;
+    var lexer = Lexer.newLexer(text);
+    var parser = Parser.NewParser(&lexer, al);
+    defer parser.deinit();
+    try parser.parseProgram();
+
+    const str = try std.mem.join(al, "", parser.out.items);
+    const res = str[0..str.len];
+    // std.debug.print("{s} \n", .{res});
+    try std.testing.expect(std.mem.eql(u8, res, "<strong><em>nihhha</em></strong><hr/><hr/><p>awerwe---</p>"));
 }
