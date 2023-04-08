@@ -60,6 +60,8 @@ pub const Lexer = struct {
             return token.newToken(.TK_CODE, "`", null);
         } else if (eql(u8, ch, ">")) {
             return token.newToken(.TK_GT, ">", 1);
+        } else if (eql(u8, ch, "<")) {
+            return token.newToken(.TK_LT, "<", 1);
         } else {
             if (eql(u8, ch, "")) {
                 return token.newToken(.TK_EOF, "", null);
@@ -89,11 +91,15 @@ pub const Lexer = struct {
     fn string(self: *Lexer) token.Token {
         const pos = self.pos;
         // abcdefgh\n;
-        while (!eql(u8, self.ch, "\n") and !eql(u8, self.ch, "*")  and !self.isEnd()) {
+        while (!eql(u8, self.ch, "\n") and !eql(u8, self.ch, "*")
+            and !eql(u8, self.ch, "]") and !eql(u8, self.ch, ")")
+            and !eql(u8, self.ch, ">")
+            and !self.isEnd()) {
             self.readChar();
         }
         var str: []const u8 = undefined;
-        if (eql(u8, self.ch, "\n") or eql(u8, self.ch, "*")) {
+        if (eql(u8, self.ch, "\n") or eql(u8, self.ch, "*") or eql(u8, self.ch, "]") 
+            or eql(u8, self.ch, ")") or eql(u8, self.ch, ">")) {
             str = self.source[pos - 1 .. self.read_pos - 1];
             return token.newToken(.TK_STR, str, null);
         }
@@ -223,6 +229,13 @@ test "lexer >" {
     const tk = lexer.nextToken();
     try std.testing.expect(eql(u8, tk.literal, ">"));
     try std.testing.expect(tk.ty == .TK_GT);
+}
+
+test "lexer <" {
+    var lexer = Lexer.newLexer("< 123443");
+    const tk = lexer.nextToken();
+    try std.testing.expect(eql(u8, tk.literal, "<"));
+    try std.testing.expect(tk.ty == .TK_LT);
 }
 
 test "lexer string" {
