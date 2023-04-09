@@ -62,6 +62,8 @@ pub const Lexer = struct {
             return token.newToken(.TK_GT, ">", 1);
         } else if (eql(u8, ch, "<")) {
             return token.newToken(.TK_LT, "<", 1);
+        } else if (eql(u8, ch, "!")) {
+            return token.newToken(.TK_BANG, "!", null);
         } else {
             if (eql(u8, ch, "")) {
                 return token.newToken(.TK_EOF, "", null);
@@ -236,6 +238,13 @@ test "lexer <" {
     const tk = lexer.nextToken();
     try std.testing.expect(eql(u8, tk.literal, "<"));
     try std.testing.expect(tk.ty == .TK_LT);
+}
+
+test "lexer !" {
+    var lexer = Lexer.newLexer("!test");
+    const tk = lexer.nextToken();
+    try std.testing.expect(eql(u8, tk.literal, "!"));
+    try std.testing.expect(tk.ty == .TK_BANG);
 }
 
 test "lexer string" {

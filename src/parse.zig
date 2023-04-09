@@ -56,6 +56,7 @@ pub const Parser = struct {
             .TK_MINUS => try self.parseBlankLine(),
             .TK_LBRACE => try self.parseLink(),
             .TK_LT => try self.parseLinkWithLT(),
+            .TK_BANG => try self.parseImage(),
             else => {},
         }
     }
@@ -311,7 +312,7 @@ pub const Parser = struct {
         }
         return;
     }
-    
+
     // [link](https://github.com)
     fn parseLink(self: *Parser) !void {
         if (self.curTokenIs(.TK_STR)) {
@@ -323,11 +324,29 @@ pub const Parser = struct {
             if (self.curTokenIs(.TK_LPAREN)) {
                 self.nextToken(); // skip (
             }
-            const fmt = try std.fmt.allocPrint(self.allocator, "<a href=\"{s}\">{s}", .{self.cur_token.literal, str});
+            const fmt = try std.fmt.allocPrint(self.allocator, "<a href=\"{s}\">{s}", .{ self.cur_token.literal, str });
             try self.out.append(fmt);
-            if (self.peekTokenIs(.TK_RPAREN)) {
+            if (self.expectPeek(.TK_RPAREN)) {
                 self.nextToken();
                 try self.out.append("</a>");
+            }
+        }
+
+        // [![image](/assets/img/ship.jpg)](https://github.com/Chanyon)
+        if (self.curTokenIs(.TK_BANG)) {
+            self.nextToken();
+            var img_tag: []const u8 = undefined;
+            try self.parseImage();
+            img_tag = self.out.pop();
+            if (self.expectPeek(.TK_LPAREN)) {
+                self.nextToken();
+                if (self.peekTokenIs(.TK_RPAREN)) {
+                    const fmt = try std.fmt.allocPrint(self.allocator, "<a href=\"{s}\">{s}</a>", .{ self.cur_token.literal, img_tag });
+                    try self.out.append(fmt);
+                    self.nextToken();
+                    self.nextToken();
+                    // std.debug.print("{any}==>`{s}`\n", .{ self.cur_token.ty, self.cur_token.literal });
+                }
             }
         }
         return;
@@ -336,17 +355,37 @@ pub const Parser = struct {
     fn parseLinkWithLT(self: *Parser) !void {
         if (self.curTokenIs(.TK_STR)) {
             const str = self.cur_token.literal;
-                const fmt = try std.fmt.allocPrint(self.allocator, "<a href=\"{s}\">{s}", .{str,str});
-                try self.out.append(fmt);
+            const fmt = try std.fmt.allocPrint(self.allocator, "<a href=\"{s}\">{s}", .{ str, str });
+            try self.out.append(fmt);
             if (self.peekTokenIs(.TK_GT)) {
                 self.nextToken();
                 try self.out.append("</a>");
-            }else {
+            } else {
                 try self.out.append("</a>");
             }
         }
         self.nextToken();
-        // std.debug.print("{any}==>`{s}`\n", .{ self.cur_token.ty, self.cur_token.literal });
+        return;
+    }
+
+    // ![image](/assets/img/philly-magic-garden.jpg)
+    fn parseImage(self: *Parser) !void {
+        if (self.curTokenIs(.TK_LBRACE)) {
+            self.nextToken();
+            if (self.curTokenIs(.TK_STR)) {
+                const str = self.cur_token.literal;
+                self.nextToken();
+                if (self.curTokenIs(.TK_RBRACE)) {
+                    if (self.expectPeek(.TK_LPAREN)) {
+                        self.nextToken();
+                        const fmt = try std.fmt.allocPrint(self.allocator, "<img src=\"{s}\" alt=\"{s}\">", .{ self.cur_token.literal, str });
+                        try self.out.append(fmt);
+                    }
+                }
+            }
+        }
+        self.nextToken();
+        self.nextToken();
         return;
     }
 
@@ -784,4 +823,42 @@ test "parser link 2" {
     const res = str[0..str.len];
     // std.debug.print("{s} \n", .{res});
     try std.testing.expect(std.mem.eql(u8, res, "<a href=\"https://github.com\">https://github.com</a><a href=\"https://github.com/2\">https://github.com/2</a>"));
+}
+
+test "parser image link" {
+    var gpa = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    const al = gpa.allocator();
+    defer gpa.deinit();
+    const text =
+        \\[![image](/assets/img/ship.jpg)](https://github.com/Chanyon)
+        \\
+    ;
+    var lexer = Lexer.newLexer(text);
+    var parser = Parser.NewParser(&lexer, al);
+    defer parser.deinit();
+    try parser.parseProgram();
+
+    const str = try std.mem.join(al, "", parser.out.items);
+    const res = str[0..str.len];
+    // std.debug.print("{s} \n", .{res});
+    try std.testing.expect(std.mem.eql(u8, res, "<a href=\"https://github.com/Chanyon\"><img src=\"/assets/img/ship.jpg\" alt=\"image\"></a>"));
+}
+
+test "parser img" {
+    var gpa = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    const al = gpa.allocator();
+    defer gpa.deinit();
+    const text =
+        \\![img](/assets/img/philly-magic-garden.jpg)
+        \\
+    ;
+    var lexer = Lexer.newLexer(text);
+    var parser = Parser.NewParser(&lexer, al);
+    defer parser.deinit();
+    try parser.parseProgram();
+
+    const str = try std.mem.join(al, "", parser.out.items);
+    const res = str[0..str.len];
+    // std.debug.print("{s} \n", .{res});
+    try std.testing.expect(std.mem.eql(u8, res, "<img src=\"/assets/img/philly-magic-garden.jpg\" alt=\"img\">"));
 }
