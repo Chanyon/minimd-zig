@@ -52,6 +52,20 @@
     ~~test~~ => <p><s>test</s></p>
     hello~~test~~world => <p>hello<s>test</s>world</p>
   ```
+- code
+  ```
+  `test` => <code>test</code>
+  `` `test` `` => <code> `test` </code>
+  =```
+    {
+     "width": "100px",
+     "height": "100px",
+    "fontSize": "16px",
+    "color": "#ccc",
+    }
+   =```
+   => <pre><code><br>{<br>  "width": "100px",<br>  "height": "100px",<br>  "fontSize": "16px",<br>  "color": "#ccc",<br>}<br></code></pre>
+  ```
 
 ### 未实现
 - [ ] 列表语法
