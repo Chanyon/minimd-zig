@@ -58,6 +58,8 @@ pub const Parser = struct {
             .TK_LT => try self.parseLinkWithLT(),
             .TK_BANG => try self.parseImage(),
             .TK_STRIKETHROUGH => try self.parseStrikethrough(),
+            .TK_CODE => try self.parseCode(),
+            .TK_CODELINE => try self.parseBackquotes(), //`` `test` `` => <code> `test` </code>
             else => {},
         }
     }
@@ -128,24 +130,50 @@ pub const Parser = struct {
         try self.out.append("<p>");
         try self.out.append(self.prev_token.literal);
 
-        self.nextToken();
-        // hello**test**world
+        // self.nextToken();
+        // hello*test*world
         if (self.cur_token.ty == .TK_ASTERISKS) {
+            self.nextToken();
             try self.parseStrong();
         }
         // hello~~test~~world
         if (self.cur_token.ty == .TK_STRIKETHROUGH) {
+            self.nextToken();
             try self.parseStrikethrough2();
-            // std.debug.print("1 {any}==>`{s}`\n", .{ self.cur_token.ty, self.cur_token.literal });
+        }
+        //hello`test`world
+        if (self.cur_token.ty == .TK_CODE) {
+            self.nextToken();
+            try self.parseCode();
         }
 
         while (!self.peekOtherTokenIs(self.cur_token.ty) and self.cur_token.ty != .TK_EOF) {
             while (self.curTokenIs(.TK_BR)) {
+                if (self.curTokenIs(.TK_BR) and !self.peekTokenIs(.TK_BR)) {
+                    try self.out.append(self.cur_token.literal);
+                }
                 self.nextToken();
             }
 
             if (self.peekOtherTokenIs(self.cur_token.ty)) {
                 break;
+            } else {
+                switch (self.cur_token.ty) {
+                    .TK_ASTERISKS => {
+                        self.nextToken();
+                        try self.parseStrong();
+                    },
+                    .TK_CODE => {
+                        self.nextToken();
+                        try self.parseCode();
+                    },
+                    .TK_CODELINE => {
+                        self.nextToken();
+                        try self.parseBackquotes();
+                        // std.debug.print("1 {any}==>`{s}`\n", .{ self.cur_token.ty, self.cur_token.literal });
+                    },
+                    else => {},
+                }
             }
             try self.out.append(self.cur_token.literal);
             self.nextToken();
@@ -428,13 +456,49 @@ pub const Parser = struct {
         return;
     }
 
+    fn parseCode(self: *Parser) !void {
+        if (self.peekTokenIs(.TK_CODE)) {
+            try self.out.append("<code>");
+            try self.out.append(self.cur_token.literal);
+            try self.out.append("</code>");
+            self.nextToken();
+        }
+        self.nextToken();
+        return;
+    }
+
+    fn parseBackquotes(self: *Parser) !void {
+        try self.out.append("<code>");
+        try self.out.append(self.cur_token.literal);
+        self.nextToken();
+        if (self.curTokenIs(.TK_CODE)) {
+            try self.out.append(self.cur_token.literal);
+            self.nextToken();
+            try self.out.append(self.cur_token.literal);
+            if (self.expectPeek(.TK_CODE)) {
+                try self.out.append(self.cur_token.literal);
+                self.nextToken();
+            }
+            while (!self.curTokenIs(.TK_CODELINE) and !self.curTokenIs(.TK_EOF)) {
+                try self.out.append(self.cur_token.literal);
+                self.nextToken();
+            }
+        }
+        if (self.curTokenIs(.TK_CODELINE)) {
+            try self.out.append("</code>");
+            self.nextToken();
+            // std.debug.print("{any}==>`{s}`\n", .{ self.cur_token.ty, self.cur_token.literal });
+        }
+        return;
+    }
+
     fn curTokenIs(self: *Parser, token: TokenType) bool {
         return token == self.cur_token.ty;
     }
 
     fn peekOtherTokenIs(self: *Parser, token: TokenType) bool {
         _ = self;
-        const tokens = [_]TokenType{ .TK_MINUS, .TK_PLUS, .TK_ASTERISKS, .TK_BANG, .TK_LT, .TK_GT, .TK_LPAREN, .TK_RPAREN, .TK_UNDERLINE, .TK_VERTICAL, .TK_WELLNAME, .TK_NUM_DOT, .TK_CODEBLOCK, .TK_CODELINE, .TK_CODE };
+        const tokens = [_]TokenType{ .TK_MINUS, .TK_PLUS, .TK_BANG, .TK_UNDERLINE, .TK_VERTICAL, .TK_WELLNAME, .TK_NUM_DOT, .TK_CODEBLOCK };
 
         for (tokens) |v| {
             if (v == token) {
@@ -551,7 +615,7 @@ test "parser text" {
     const str = try std.mem.join(al, "", parser.out.items);
     const res = str[0..str.len];
     // std.debug.print("{s} \n", .{res});
-    try std.testing.expect(std.mem.eql(u8, res, "<p>helloworld</p><h1>test</h1><p>####### test</p><p>######test</p><p></p>"));
+    try std.testing.expect(std.mem.eql(u8, res, "<p>hello<br>world<br></p><h1>test</h1><p>####### test</p><p>######test</p><p></p>"));
 }
 
 test "parser text 2" {
@@ -567,7 +631,7 @@ test "parser text 2" {
     const str = try std.mem.join(al, "", parser.out.items);
     const res = str[0..str.len];
     // std.debug.print("{s} \n", .{res});
-    try std.testing.expect(std.mem.eql(u8, res, "<p>hello</p>"));
+    try std.testing.expect(std.mem.eql(u8, res, "<p>hello<br></p>"));
 }
 
 test "parser text 3" {
@@ -587,7 +651,28 @@ test "parser text 3" {
     const str = try std.mem.join(al, "", parser.out.items);
     const res = str[0..str.len];
     // std.debug.print("{s} \n", .{res});
-    try std.testing.expect(std.mem.eql(u8, res, "<p>hello</p><h1>test</h1>"));
+    try std.testing.expect(std.mem.eql(u8, res, "<p>hello<br></p><h1>test</h1>"));
+}
+
+test "parser text 4" {
+    var gpa = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    const al = gpa.allocator();
+    defer gpa.deinit();
+    const text =
+        \\hello *test* world
+        \\hello*test*world
+        \\`code test`
+        \\test
+    ;
+    var lexer = Lexer.newLexer(text);
+    var parser = Parser.NewParser(&lexer, al);
+    defer parser.deinit();
+    try parser.parseProgram();
+
+    const str = try std.mem.join(al, "", parser.out.items);
+    const res = str[0..str.len];
+    // std.debug.print("{s} \n", .{res});
+    try std.testing.expect(std.mem.eql(u8, res, "<p>hello <em>test</em> world<br>hello<em>test</em>world<br><code>code test</code><br>test</p>"));
 }
 
 test "parser strong **Bold** 1" {
@@ -646,7 +731,7 @@ test "parser text and strong **Bold** 3" {
     const str = try std.mem.join(al, "", parser.out.items);
     const res = str[0..str.len];
     // std.debug.print("{s} \n", .{res});
-    try std.testing.expect(std.mem.eql(u8, res, "<p>hello<strong>test</strong>world!</p>"));
+    try std.testing.expect(std.mem.eql(u8, res, "<p>hello<strong>test</strong>world!<br></p>"));
 }
 
 //TODO:
@@ -773,7 +858,7 @@ test "parser blankline 2" {
     const str = try std.mem.join(al, "", parser.out.items);
     const res = str[0..str.len];
     // std.debug.print("{s} \n", .{res});
-    try std.testing.expect(std.mem.eql(u8, res, "<hr><hr><p>hello</p>"));
+    try std.testing.expect(std.mem.eql(u8, res, "<hr><hr><p>hello<br></p>"));
 }
 
 test "parser blankline 3" {
@@ -798,7 +883,7 @@ test "parser blankline 3" {
     const str = try std.mem.join(al, "", parser.out.items);
     const res = str[0..str.len];
     // std.debug.print("{s} \n", .{res});
-    try std.testing.expect(std.mem.eql(u8, res, "<strong><em>nihhha</em></strong><strong><em>### 123<h3>hh</h3><hr><p>awerwe---</p>"));
+    try std.testing.expect(std.mem.eql(u8, res, "<strong><em>nihhha</em></strong><strong><em>### 123<h3>hh</h3><hr><p>awerwe---<br></p>"));
 }
 
 // test "parser <ul></ul> 1" {
@@ -938,6 +1023,63 @@ test "parser strikethrough 2" {
 
     const str = try std.mem.join(al, "", parser.out.items);
     const res = str[0..str.len];
-    std.debug.print("{s} \n", .{res});
-    try std.testing.expect(std.mem.eql(u8, res, "<p>abcdef.<s>awerwe</s>ghijklmn</p><hr><strong><em>123</em></strong>"));
+    // std.debug.print("{s} \n", .{res});
+    try std.testing.expect(std.mem.eql(u8, res, "<p>abcdef.<s>awerwe</s>ghijk<br>lmn<br></p><hr><strong><em>123</em></strong>"));
+}
+
+test "parser code" {
+    var gpa = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    const al = gpa.allocator();
+    defer gpa.deinit();
+    const text =
+        \\123455`test`12333
+        \\---
+    ;
+    var lexer = Lexer.newLexer(text);
+    var parser = Parser.NewParser(&lexer, al);
+    defer parser.deinit();
+    try parser.parseProgram();
+
+    const str = try std.mem.join(al, "", parser.out.items);
+    const res = str[0..str.len];
+    // std.debug.print("{s} \n", .{res});
+    try std.testing.expect(std.mem.eql(u8, res, "<p>123455<code>test</code>12333<br></p><hr>"));
+}
+
+test "parser code 2" {
+    var gpa = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    const al = gpa.allocator();
+    defer gpa.deinit();
+    const text =
+        \\``hello world `test` ``
+        \\---
+    ;
+    var lexer = Lexer.newLexer(text);
+    var parser = Parser.NewParser(&lexer, al);
+    defer parser.deinit();
+    try parser.parseProgram();
+
+    const str = try std.mem.join(al, "", parser.out.items);
+    const res = str[0..str.len];
+    // std.debug.print("{s} \n", .{res});
+    try std.testing.expect(std.mem.eql(u8, res, "<code>hello world `test` </code><hr>"));
+}
+
+test "parser code 3" {
+    var gpa = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    const al = gpa.allocator();
+    defer gpa.deinit();
+    const text =
+        \\1234``hello world `test` ``1234
+        \\---
+    ;
+    var lexer = Lexer.newLexer(text);
+    var parser = Parser.NewParser(&lexer, al);
+    defer parser.deinit();
+    try parser.parseProgram();
+
+    const str = try std.mem.join(al, "", parser.out.items);
+    const res = str[0..str.len];
+    // std.debug.print("{s} \n", .{res});
+    try std.testing.expect(std.mem.eql(u8, res, "<p>1234<code>hello world `test` </code>1234<br></p><hr>"));
 }

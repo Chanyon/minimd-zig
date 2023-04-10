@@ -108,7 +108,7 @@ pub const Lexer = struct {
     }
 
     fn keyWord(ch: []const u8) bool {
-        const keys = [_][]const u8{ "\n", "*", "]", ")", ">", "~" };
+        const keys = [_][]const u8{ "\n", "*", "]", ")", ">", "~", "`" };
         for (keys) |key| {
             if (eql(u8, ch, key)) {
                 return true;
