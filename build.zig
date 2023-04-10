@@ -8,7 +8,7 @@ pub fn build(b: *std.build.Builder) void {
     const lib = b.addStaticLibrary("minimd-zig", "src/lib.zig");
     lib.setBuildMode(mode);
     lib.install();
-    
+
     // zig build test_iter
     const iter_test = b.addTest("src/iter.zig");
     iter_test.setBuildMode(mode);

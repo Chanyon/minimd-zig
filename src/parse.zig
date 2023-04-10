@@ -1128,7 +1128,7 @@ test "parser code 4" {
     try std.testing.expect(std.mem.eql(u8, res, "<pre><code><br>{<br>  \"width\": \"100px\",<br>  \"height\": \"100px\",<br>  \"fontSize\": \"16px\",<br>  \"color\": \"#ccc\",<br>}<br></code></pre>"));
 }
 
-test "parser code 4" {
+test "parser code 5" {
     var gpa = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     const al = gpa.allocator();
     defer gpa.deinit();
