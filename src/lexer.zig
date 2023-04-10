@@ -53,17 +53,19 @@ pub const Lexer = struct {
                 self.readChar();
                 if (eql(u8, self.peekChar(), "`")) {
                     self.readChar();
-                    return token.newToken(.TK_CODEBLOCK, "```", null);
+                    return token.newToken(.TK_CODEBLOCK, "```", 3);
                 }
-                return token.newToken(.TK_CODELINE, "``", null);
+                return token.newToken(.TK_CODELINE, "``", 2);
             }
-            return token.newToken(.TK_CODE, "`", null);
+            return token.newToken(.TK_CODE, "`", 1);
         } else if (eql(u8, ch, ">")) {
             return token.newToken(.TK_GT, ">", 1);
         } else if (eql(u8, ch, "<")) {
             return token.newToken(.TK_LT, "<", 1);
         } else if (eql(u8, ch, "!")) {
             return token.newToken(.TK_BANG, "!", null);
+        } else if (eql(u8, ch, "~")) {
+            return token.newToken(.TK_STRIKETHROUGH, "~", 1);
         } else {
             if (eql(u8, ch, "")) {
                 return token.newToken(.TK_EOF, "", null);
@@ -93,20 +95,26 @@ pub const Lexer = struct {
     fn string(self: *Lexer) token.Token {
         const pos = self.pos;
         // abcdefgh\n;
-        while (!eql(u8, self.ch, "\n") and !eql(u8, self.ch, "*")
-            and !eql(u8, self.ch, "]") and !eql(u8, self.ch, ")")
-            and !eql(u8, self.ch, ">")
-            and !self.isEnd()) {
+        while (!keyWord(self.ch) and !self.isEnd()) {
             self.readChar();
         }
         var str: []const u8 = undefined;
-        if (eql(u8, self.ch, "\n") or eql(u8, self.ch, "*") or eql(u8, self.ch, "]") 
-            or eql(u8, self.ch, ")") or eql(u8, self.ch, ">")) {
+        if (keyWord(self.ch)) {
             str = self.source[pos - 1 .. self.read_pos - 1];
             return token.newToken(.TK_STR, str, null);
         }
         str = self.source[pos - 1 .. self.read_pos];
         return token.newToken(.TK_STR, str, null);
+    }
+
+    fn keyWord(ch: []const u8) bool {
+        const keys = [_][]const u8{ "\n", "*", "]", ")", ">", "~" };
+        for (keys) |key| {
+            if (eql(u8, ch, key)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     fn isEnd(self: *Self) bool {
@@ -119,6 +127,13 @@ test "lexer \"\" " {
     const tk = lexer.nextToken();
     try std.testing.expect(eql(u8, tk.literal, ""));
     try std.testing.expect(tk.ty == .TK_EOF);
+}
+
+test "lexer \" \" " {
+    var lexer = Lexer.newLexer(" ");
+    const tk = lexer.nextToken();
+    try std.testing.expect(eql(u8, tk.literal, " "));
+    try std.testing.expect(tk.ty == .TK_SPACE);
 }
 
 test "lexer +" {
@@ -212,7 +227,7 @@ test "lexer ]" {
     try std.testing.expect(tk.ty == .TK_RBRACE);
 }
 
-test "lexer [" {
+test "lexer (" {
     var lexer = Lexer.newLexer("(");
     const tk = lexer.nextToken();
     try std.testing.expect(eql(u8, tk.literal, "("));
@@ -245,6 +260,13 @@ test "lexer !" {
     const tk = lexer.nextToken();
     try std.testing.expect(eql(u8, tk.literal, "!"));
     try std.testing.expect(tk.ty == .TK_BANG);
+}
+
+test "lexer ~" {
+    var lexer = Lexer.newLexer("~~~~");
+    const tk = lexer.nextToken();
+    try std.testing.expect(eql(u8, tk.literal, "~"));
+    try std.testing.expect(tk.ty == .TK_STRIKETHROUGH);
 }
 
 test "lexer string" {

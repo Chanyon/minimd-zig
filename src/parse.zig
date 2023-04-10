@@ -57,6 +57,7 @@ pub const Parser = struct {
             .TK_LBRACE => try self.parseLink(),
             .TK_LT => try self.parseLinkWithLT(),
             .TK_BANG => try self.parseImage(),
+            .TK_STRIKETHROUGH => try self.parseStrikethrough(),
             else => {},
         }
     }
@@ -132,12 +133,18 @@ pub const Parser = struct {
         if (self.cur_token.ty == .TK_ASTERISKS) {
             try self.parseStrong();
         }
+        // hello~~test~~world
+        if (self.cur_token.ty == .TK_STRIKETHROUGH) {
+            try self.parseStrikethrough2();
+            // std.debug.print("1 {any}==>`{s}`\n", .{ self.cur_token.ty, self.cur_token.literal });
+        }
 
         while (!self.peekOtherTokenIs(self.cur_token.ty) and self.cur_token.ty != .TK_EOF) {
             while (self.curTokenIs(.TK_BR)) {
                 self.nextToken();
             }
-            if (self.cur_token.ty == .TK_WELLNAME) {
+
+            if (self.peekOtherTokenIs(self.cur_token.ty)) {
                 break;
             }
             try self.out.append(self.cur_token.literal);
@@ -386,6 +393,38 @@ pub const Parser = struct {
         }
         self.nextToken();
         self.nextToken();
+        return;
+    }
+
+    fn parseStrikethrough(self: *Parser) !void {
+        if (self.curTokenIs(.TK_STRIKETHROUGH)) {
+            self.nextToken();
+            if (self.peekTokenIs(.TK_STRIKETHROUGH)) {
+                try self.out.append("<p><s>");
+                try self.out.append(self.cur_token.literal);
+                try self.out.append("</s></p>");
+                self.nextToken();
+            }
+        }
+        self.nextToken();
+        self.nextToken();
+        // std.debug.print("{any}==>`{s}`\n", .{ self.cur_token.ty, self.cur_token.literal });
+        return;
+    }
+
+    fn parseStrikethrough2(self: *Parser) !void {
+        if (self.curTokenIs(.TK_STRIKETHROUGH)) {
+            self.nextToken();
+            if (self.peekTokenIs(.TK_STRIKETHROUGH)) {
+                try self.out.append("<s>");
+                try self.out.append(self.cur_token.literal);
+                try self.out.append("</s>");
+                self.nextToken();
+            }
+        }
+        self.nextToken();
+        self.nextToken();
+        // std.debug.print("2 {any}==>`{s}`\n", .{ self.cur_token.ty, self.cur_token.literal });
         return;
     }
 
@@ -861,4 +900,44 @@ test "parser img" {
     const res = str[0..str.len];
     // std.debug.print("{s} \n", .{res});
     try std.testing.expect(std.mem.eql(u8, res, "<img src=\"/assets/img/philly-magic-garden.jpg\" alt=\"img\">"));
+}
+
+test "parser strikethrough" {
+    var gpa = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    const al = gpa.allocator();
+    defer gpa.deinit();
+    const text =
+        \\~~awerwe~~
+        \\
+    ;
+    var lexer = Lexer.newLexer(text);
+    var parser = Parser.NewParser(&lexer, al);
+    defer parser.deinit();
+    try parser.parseProgram();
+
+    const str = try std.mem.join(al, "", parser.out.items);
+    const res = str[0..str.len];
+    // std.debug.print("{s} \n", .{res});
+    try std.testing.expect(std.mem.eql(u8, res, "<p><s>awerwe</s></p>"));
+}
+
+test "parser strikethrough 2" {
+    var gpa = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    const al = gpa.allocator();
+    defer gpa.deinit();
+    const text =
+        \\abcdef.~~awerwe~~ghijk
+        \\lmn
+        \\---
+        \\***123***
+    ;
+    var lexer = Lexer.newLexer(text);
+    var parser = Parser.NewParser(&lexer, al);
+    defer parser.deinit();
+    try parser.parseProgram();
+
+    const str = try std.mem.join(al, "", parser.out.items);
+    const res = str[0..str.len];
+    std.debug.print("{s} \n", .{res});
+    try std.testing.expect(std.mem.eql(u8, res, "<p>abcdef.<s>awerwe</s>ghijklmn</p><hr><strong><em>123</em></strong>"));
 }
