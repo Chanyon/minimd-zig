@@ -10,10 +10,16 @@ pub const Parser = struct {
     cur_token: Token,
     peek_token: Token,
     out: std.ArrayList([]const u8),
-    list_nest: bool,
+    unordered_list: std.ArrayList(Unordered),
+
+    const Unordered = struct {
+        spaces: u16,
+        token: Token,
+    };
 
     pub fn NewParser(lex: *Lexer, al: std.mem.Allocator) Parser {
         const list = std.ArrayList([]const u8).init(al);
+        const unordered = std.ArrayList(Unordered).init(al);
         var parser = Parser{
             .allocator = al,
             .lex = lex,
@@ -21,7 +27,7 @@ pub const Parser = struct {
             .cur_token = undefined,
             .peek_token = undefined,
             .out = list,
-            .list_nest = false,
+            .unordered_list = unordered,
         };
         parser.nextToken();
         parser.nextToken();
@@ -31,6 +37,7 @@ pub const Parser = struct {
 
     pub fn deinit(self: *Parser) void {
         self.out.deinit();
+        self.unordered_list.deinit();
     }
 
     fn nextToken(self: *Parser) void {
@@ -292,8 +299,7 @@ pub const Parser = struct {
         }
 
         if (level == 1) {
-            try self.out.append("<ul>");
-            try self.out.append("</ul>");
+            try self.parseUnorderedList();
         }
 
         if (level >= 3) {
@@ -306,32 +312,50 @@ pub const Parser = struct {
     }
 
     fn parseUnorderedList(self: *Parser) !void {
+        var spaces: u16 = 1;
         if (self.curTokenIs(.TK_SPACE)) {
             self.nextToken();
-            while (!self.curTokenIs(.TK_EOF)) {
+            while (!self.curTokenIs(.TK_EOF) or self.curTokenIs(.TK_MINUS)) {
                 if (self.curTokenIs(.TK_BR)) {
+                    spaces = 1;
                     self.nextToken();
-                    if (self.peekOtherTokenIs(self.cur_token.ty)) {
-                        self.list_nest = false;
+                    if (!self.curTokenIs(.TK_MINUS) and !self.curTokenIs(.TK_SPACE)) {
                         break;
                     }
                     if (self.curTokenIs(.TK_SPACE)) {
                         while (self.curTokenIs(.TK_SPACE)) {
+                            spaces += 1;
                             self.nextToken();
                         }
-                        self.list_nest = true;
-                        break;
-                    } else {
-                        self.list_nest = false;
+                        if (self.curTokenIs(.TK_MINUS)) {
+                            self.nextToken();
+                            self.nextToken();
+                        }
                     }
-                    continue;
+                    if (self.curTokenIs(.TK_MINUS)) {
+                        self.nextToken();
+                        self.nextToken();
+                    }
                 }
-                try self.out.append("<li>");
-                try self.out.append(self.cur_token.literal);
-                try self.out.append("</li>");
+                // std.debug.print("{any}==>{s}\n", .{ self.cur_token.ty, self.cur_token.literal });
+                try self.unordered_list.append(.{ .spaces = spaces, .token = self.cur_token });
                 self.nextToken();
             }
         }
+        try self.out.append("<ul>");
+        var idx: usize = 0;
+        const l = self.unordered_list.items.len;
+        while (idx < l) : (idx += 1) {
+            // std.debug.print("spaces: {any}\n", .{self.unordered_list.items[idx].spaces});
+            // if (self.unordered_list.items[idx].spaces == 1) {
+            try self.out.append("<li>");
+            try self.out.append(self.unordered_list.items[idx].token.literal);
+            try self.out.append("</li>");
+            // }
+        }
+        try self.out.append("</ul>");
+        self.nextToken();
+        // std.debug.print("{any}==>`{s}`\n", .{ self.cur_token.ty, self.cur_token.literal });
         return;
     }
 
@@ -391,13 +415,28 @@ pub const Parser = struct {
     fn parseLinkWithLT(self: *Parser) !void {
         if (self.curTokenIs(.TK_STR)) {
             const str = self.cur_token.literal;
-            const fmt = try std.fmt.allocPrint(self.allocator, "<a href=\"{s}\">{s}", .{ str, str });
-            try self.out.append(fmt);
-            if (self.peekTokenIs(.TK_GT)) {
-                self.nextToken();
-                try self.out.append("</a>");
+
+            if (self.IsHtmlTag(str)) {
+                try self.out.append("<");
+                while (!self.curTokenIs(.TK_EOF)) {
+                    if (self.curTokenIs(.TK_BR)) {
+                        if (self.peekOtherTokenIs(self.peek_token.ty)) {
+                            break;
+                        }
+                        self.nextToken();
+                    }
+                    try self.out.append(self.cur_token.literal);
+                    self.nextToken();
+                }
             } else {
-                try self.out.append("</a>");
+                const fmt = try std.fmt.allocPrint(self.allocator, "<a href=\"{s}\">{s}", .{ str, str });
+                try self.out.append(fmt);
+                if (self.peek_token.ty == .TK_GT) {
+                    self.nextToken();
+                    try self.out.append("</a>");
+                } else {
+                    try self.out.append("</a>");
+                }
             }
         }
         self.nextToken();
@@ -536,6 +575,17 @@ pub const Parser = struct {
             return true;
         }
 
+        return false;
+    }
+
+    fn IsHtmlTag(self: *Parser, str: []const u8) bool {
+        _ = self;
+        const html_tag_list = [_][]const u8{ "div", "a", "p", "ul", "li", "ol", "dt", "dd", "span", "img", "table" };
+        for (html_tag_list) |value| {
+            if (std.mem.eql(u8, value, str)) {
+                return true;
+            }
+        }
         return false;
     }
 };
@@ -904,28 +954,30 @@ test "parser blankline 3" {
     try std.testing.expect(std.mem.eql(u8, res, "<strong><em>nihhha</em></strong><strong><em>### 123<h3>hh</h3><hr><p>awerwe---<br></p>"));
 }
 
-// test "parser <ul></ul> 1" {
-//     var gpa = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-//     const al = gpa.allocator();
-//     defer gpa.deinit();
-//     const text =
-//         \\- test
-//         \\  - test2
-//         \\		- test3
-//         \\  - test4
-//         \\- test5
-//         \\
-//     ;
-//     var lexer = Lexer.newLexer(text);
-//     var parser = Parser.NewParser(&lexer, al);
-//     defer parser.deinit();
-//     try parser.parseProgram();
+test "parser <ul></ul> 1" {
+    var gpa = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    const al = gpa.allocator();
+    defer gpa.deinit();
+    const text =
+        \\- test
+        \\  - test2
+        // \\      - test3
+        // \\          - test6
+        \\  - test4
+        \\- test5
+        \\
+        // \\---
+    ;
+    var lexer = Lexer.newLexer(text);
+    var parser = Parser.NewParser(&lexer, al);
+    defer parser.deinit();
+    try parser.parseProgram();
 
-//     const str = try std.mem.join(al, "", parser.out.items);
-//     const res = str[0..str.len];
-//     std.debug.print("{s} \n", .{res});
-//     try std.testing.expect(std.mem.eql(u8, res, "<ul><li>test</li><ul><li>test2</li><ul><li>test3</li></ul></li>test4</li></ul><li>test5</li></ul>"));
-// }
+    const str = try std.mem.join(al, "", parser.out.items);
+    const res = str[0..str.len];
+    std.debug.print("{s} \n", .{res});
+    try std.testing.expect(std.mem.eql(u8, res, "<ul><li>test</li><li>test2</li><li>test4</li><li>test5</li></ul>"));
+}
 
 test "parser link" {
     var gpa = std.heap.ArenaAllocator.init(std.heap.page_allocator);
@@ -1151,4 +1203,25 @@ test "parser code 5" {
     const res = str[0..str.len];
     // std.debug.print("{s} \n", .{res});
     try std.testing.expect(std.mem.eql(u8, res, "<pre><code><br><p>test</p><br>---<br></code></pre><pre><code><br><code></code><br></code></pre>"));
+}
+
+test "parser raw html" {
+    var gpa = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    const al = gpa.allocator();
+    defer gpa.deinit();
+    const text =
+        \\<p>hello</p>
+        \\<div>world
+        \\</div>
+        \\# test raw html
+    ;
+    var lexer = Lexer.newLexer(text);
+    var parser = Parser.NewParser(&lexer, al);
+    defer parser.deinit();
+    try parser.parseProgram();
+
+    const str = try std.mem.join(al, "", parser.out.items);
+    const res = str[0..str.len];
+    // std.debug.print("{s} \n", .{res});
+    try std.testing.expect(std.mem.eql(u8, res, "<p>hello</p><div>world</div><h1>test raw html</h1>"));
 }
