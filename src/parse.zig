@@ -354,7 +354,6 @@ pub const Parser = struct {
             // }
         }
         try self.out.append("</ul>");
-        self.nextToken();
         // std.debug.print("{any}==>`{s}`\n", .{ self.cur_token.ty, self.cur_token.literal });
         return;
     }
@@ -424,6 +423,7 @@ pub const Parser = struct {
                             break;
                         }
                         self.nextToken();
+                        continue;
                     }
                     try self.out.append(self.cur_token.literal);
                     self.nextToken();
@@ -440,6 +440,7 @@ pub const Parser = struct {
             }
         }
         self.nextToken();
+        // std.debug.print("{any}==>`{s}`\n", .{ self.cur_token.ty, self.cur_token.literal });
         return;
     }
 
@@ -975,7 +976,7 @@ test "parser <ul></ul> 1" {
 
     const str = try std.mem.join(al, "", parser.out.items);
     const res = str[0..str.len];
-    std.debug.print("{s} \n", .{res});
+    // std.debug.print("{s} \n", .{res});
     try std.testing.expect(std.mem.eql(u8, res, "<ul><li>test</li><li>test2</li><li>test4</li><li>test5</li></ul>"));
 }
 
@@ -1213,6 +1214,13 @@ test "parser raw html" {
         \\<p>hello</p>
         \\<div>world
         \\</div>
+        \\
+        \\
+        \\
+        \\
+        \\- one
+        \\- two
+        \\
         \\# test raw html
     ;
     var lexer = Lexer.newLexer(text);
@@ -1223,5 +1231,5 @@ test "parser raw html" {
     const str = try std.mem.join(al, "", parser.out.items);
     const res = str[0..str.len];
     // std.debug.print("{s} \n", .{res});
-    try std.testing.expect(std.mem.eql(u8, res, "<p>hello</p><div>world</div><h1>test raw html</h1>"));
+    try std.testing.expect(std.mem.eql(u8, res, "<p>hello</p><div>world</div><ul><li>one</li><li>two</li></ul><h1>test raw html</h1>"));
 }

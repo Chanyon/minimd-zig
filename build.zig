@@ -4,6 +4,8 @@ pub fn build(b: *std.build.Builder) void {
     // Standard release options allow the person running `zig build` to select
     // between Debug, ReleaseSafe, ReleaseFast, and ReleaseSmall.
     const mode = b.standardReleaseOptions();
+    //zig build -Ddocs=true
+    const documention = b.option(bool, "docs", "Generate documentation") orelse false;
 
     const lib = b.addStaticLibrary("minimd-zig", "src/lib.zig");
     lib.setBuildMode(mode);
@@ -17,12 +19,12 @@ pub fn build(b: *std.build.Builder) void {
 
     // zig build test_lex
     const lexer_test = b.addTest("src/lexer.zig");
-    iter_test.setBuildMode(mode);
+    lexer_test.setBuildMode(mode);
     const lexer_step = b.step("test_lex", "test lexer");
     lexer_step.dependOn(&lexer_test.step);
 
     const parser_test = b.addTest("src/parse.zig");
-    iter_test.setBuildMode(mode);
+    parser_test.setBuildMode(mode);
     const parser_step = b.step("test_parse", "test parser");
     parser_step.dependOn(&parser_test.step);
 
@@ -33,4 +35,8 @@ pub fn build(b: *std.build.Builder) void {
     test_step.dependOn(&main_tests.step);
     test_step.dependOn(&lexer_test.step);
     test_step.dependOn(&parser_test.step);
+
+    if (documention) {
+        lib.emit_docs = .emit;
+    }
 }

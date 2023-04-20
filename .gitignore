@@ -2,3 +2,4 @@
 tests/
 zig-cache/
 zig-out/
+docs
