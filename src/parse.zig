@@ -1233,3 +1233,20 @@ test "parser raw html" {
     // std.debug.print("{s} \n", .{res});
     try std.testing.expect(std.mem.eql(u8, res, "<p>hello</p><div>world</div><ul><li>one</li><li>two</li></ul><h1>test raw html</h1>"));
 }
+
+// test "parser windows newline" {
+//     var gpa = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+//     const al = gpa.allocator();
+//     defer gpa.deinit();
+//     const text = "hello\r\n";
+
+//     var lexer = Lexer.newLexer(text);
+//     var parser = Parser.NewParser(&lexer, al);
+//     defer parser.deinit();
+//     try parser.parseProgram();
+
+//     const str = try std.mem.join(al, "", parser.out.items);
+//     const res = str[0..str.len];
+//     std.debug.print("--{s}\n", .{res});
+//     try std.testing.expect(std.mem.eql(u8, res, "<p>hello<br></p>"));
+// }

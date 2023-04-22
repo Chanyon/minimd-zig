@@ -30,6 +30,8 @@ pub const Lexer = struct {
             return token.newToken(.TK_MINUS, "-", 1);
         } else if (eql(u8, ch, "\n")) {
             return token.newToken(.TK_BR, "<br>", null);
+        } else if (eql(u8, ch, "\r")) {
+            return token.newToken(.TK_BR, "<br>", null);
         } else if (eql(u8, ch, "*")) {
             return token.newToken(.TK_ASTERISKS, "*", 1);
         } else if (eql(u8, ch, "|")) {
@@ -163,6 +165,13 @@ test "lexer \n" {
     try std.testing.expect(eql(u8, tk.literal, "<br>"));
     try std.testing.expect(tk.ty == .TK_BR);
 }
+
+// test "lexer \r\n" {
+//     var lexer = Lexer.newLexer("\r\n");
+//     const tk = lexer.nextToken();
+//     try std.testing.expect(eql(u8, tk.literal, "<br>"));
+//     try std.testing.expect(tk.ty == .TK_BR);
+// }
 
 test "lexer |" {
     var lexer = Lexer.newLexer("|");
