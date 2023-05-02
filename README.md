@@ -20,6 +20,7 @@
     **test** => <strong>test</strong>
     *test* => <em>test</em>
     ***test*** => <strong><em>test</em></strong>
+    __hello__ => <strong>test</strong>
   ```
 - 引用语法
   ```

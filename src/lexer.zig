@@ -31,6 +31,10 @@ pub const Lexer = struct {
         } else if (eql(u8, ch, "\n")) {
             return token.newToken(.TK_BR, "<br>", null);
         } else if (eql(u8, ch, "\r")) {
+            // if (eql(u8, self.peekChar(), "\n")) {
+            //     self.readChar();
+            //     return token.newToken(.TK_BR, "<br>", null);
+            // }
             return token.newToken(.TK_BR, "<br>", null);
         } else if (eql(u8, ch, "*")) {
             return token.newToken(.TK_ASTERISKS, "*", 1);
@@ -110,7 +114,7 @@ pub const Lexer = struct {
     }
 
     fn keyWord(ch: []const u8) bool {
-        const keys = [_][]const u8{ "\n", "*", "]", ")", ">", "~", "`" };
+        const keys = [_][]const u8{ "\n", "*", "]", ")", ">", "~", "`", "_" };
         for (keys) |key| {
             if (eql(u8, ch, key)) {
                 return true;
