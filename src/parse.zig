@@ -344,7 +344,7 @@ pub const Parser = struct {
     }
 
     fn parseUnorderedList(self: *Parser) !void {
-        var spaces: u16 = 1;
+        var spaces: u8 = 1;
         if (self.curTokenIs(.TK_SPACE)) {
             self.nextToken();
             while (!self.curTokenIs(.TK_EOF) or self.curTokenIs(.TK_MINUS)) {
@@ -374,16 +374,42 @@ pub const Parser = struct {
                 self.nextToken();
             }
         }
-        try self.out.append("<ul>");
-        var idx: usize = 0;
-        const l = self.unordered_list.items.len;
-        while (idx < l) : (idx += 1) {
-            // std.debug.print("spaces: {any}\n", .{self.unordered_list.items[idx].spaces});
-            // if (self.unordered_list.items[idx].spaces == 1) {
+
+        var idx: usize = 1;
+        const len = self.unordered_list.items.len;
+        {
+            try self.out.append("<ul>");
             try self.out.append("<li>");
-            try self.out.append(self.unordered_list.items[idx].token.literal);
+            try self.out.append(self.unordered_list.items[0].token.literal);
             try self.out.append("</li>");
-            // }
+        }
+        while (idx < len) : (idx += 1) {
+            var prev_idx: usize = 0;
+            while (prev_idx < idx) : (prev_idx += 1) {
+                if (self.unordered_list.items[idx].spaces == self.unordered_list.items[prev_idx].spaces) {
+                    if (self.unordered_list.items[idx].spaces < self.unordered_list.items[idx - 1].spaces) {
+                        try self.out.append("</ul>");
+                    }
+                    try self.out.append("<li>");
+                    try self.out.append(self.unordered_list.items[idx].token.literal);
+                    try self.out.append("</li>");
+
+                    break;
+                }
+            }
+
+            if (self.unordered_list.items[idx].spaces > self.unordered_list.items[idx - 1].spaces) {
+                try self.out.append("<ul>");
+
+                try self.out.append("<li>");
+                try self.out.append(self.unordered_list.items[idx].token.literal);
+                try self.out.append("</li>");
+
+                if (idx == len - 1) {
+                    try self.out.append("</ul>");
+                    try self.out.append("</ul>");
+                }
+            }
         }
         try self.out.append("</ul>");
         // std.debug.print("{any}==>`{s}`\n", .{ self.cur_token.ty, self.cur_token.literal });
@@ -994,12 +1020,12 @@ test "parser <ul></ul> 1" {
     const text =
         \\- test
         \\  - test2
-        // \\      - test3
-        // \\          - test6
+        \\      - test3
         \\  - test4
         \\- test5
+        \\- test6
         \\
-        // \\---
+        \\---
     ;
     var lexer = Lexer.newLexer(text);
     var parser = Parser.NewParser(&lexer, al);
@@ -1009,7 +1035,7 @@ test "parser <ul></ul> 1" {
     const str = try std.mem.join(al, "", parser.out.items);
     const res = str[0..str.len];
     // std.debug.print("{s} \n", .{res});
-    try std.testing.expect(std.mem.eql(u8, res, "<ul><li>test</li><li>test2</li><li>test4</li><li>test5</li></ul>"));
+    try std.testing.expect(std.mem.eql(u8, res, "<ul><li>test</li><ul><li>test2</li><ul><li>test3</li></ul><li>test4</li></ul><li>test5</li><li>test6</li></ul><hr>"));
 }
 
 test "parser link" {
