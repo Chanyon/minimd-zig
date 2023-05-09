@@ -1,4 +1,5 @@
 const std = @import("std");
+const trimRight = std.mem.trimRight;
 const Lexer = @import("lexer.zig").Lexer;
 const Token = @import("token.zig").Token;
 const TokenType = @import("token.zig").TokenType;
@@ -11,24 +12,27 @@ pub const Parser = struct {
     peek_token: Token,
     out: std.ArrayList([]const u8),
     unordered_list: std.ArrayList(Unordered),
+    table_list: std.ArrayList(Token),
+    table_context: TableContext,
 
     const Unordered = struct {
         spaces: u16,
         token: Token,
     };
 
+    const Align = enum { Left, Right, Center };
+    const TableContext = struct {
+        align_style: std.ArrayList(Align),
+        cols: u8,
+        cols_done: bool,
+    };
+
     pub fn NewParser(lex: *Lexer, al: std.mem.Allocator) Parser {
         const list = std.ArrayList([]const u8).init(al);
         const unordered = std.ArrayList(Unordered).init(al);
-        var parser = Parser{
-            .allocator = al,
-            .lex = lex,
-            .prev_token = undefined,
-            .cur_token = undefined,
-            .peek_token = undefined,
-            .out = list,
-            .unordered_list = unordered,
-        };
+        const table_list = std.ArrayList(Token).init(al);
+        const align_style = std.ArrayList(Align).init(al);
+        var parser = Parser{ .allocator = al, .lex = lex, .prev_token = undefined, .cur_token = undefined, .peek_token = undefined, .out = list, .unordered_list = unordered, .table_list = table_list, .table_context = .{ .align_style = align_style, .cols = 1, .cols_done = false } };
         parser.nextToken();
         parser.nextToken();
         parser.nextToken();
@@ -38,6 +42,8 @@ pub const Parser = struct {
     pub fn deinit(self: *Parser) void {
         self.out.deinit();
         self.unordered_list.deinit();
+        self.table_list.deinit();
+        self.table_context.align_style.deinit();
     }
 
     fn nextToken(self: *Parser) void {
@@ -68,6 +74,7 @@ pub const Parser = struct {
             .TK_CODE => try self.parseCode(),
             .TK_CODELINE => try self.parseBackquotes(), //`` `test` `` => <code> `test` </code>
             .TK_CODEBLOCK => try self.parseCodeBlock(),
+            .TK_VERTICAL => try self.parseTable(),
             else => {},
         }
     }
@@ -416,20 +423,6 @@ pub const Parser = struct {
         return;
     }
 
-    fn parseUnorderedListNest(self: *Parser) !void {
-        while (self.curTokenIs(.TK_MINUS) and self.list_nest) {
-            self.nextToken();
-            try self.parseUnorderedList();
-            // while (self.curTokenIs(.TK_MINUS)) {
-            // 	self.nextToken();
-            // 	try self.parseUnorderedList();
-            // }
-            std.debug.print("{any}==>`{s}`\n", .{ self.cur_token.ty, self.cur_token.literal });
-            std.debug.print("{}\n", .{self.list_nest});
-        }
-        return;
-    }
-
     // [link](https://github.com)
     fn parseLink(self: *Parser) !void {
         if (self.curTokenIs(.TK_STR)) {
@@ -606,6 +599,79 @@ pub const Parser = struct {
         }
         // std.debug.print("{any}==>`{s}`\n", .{ self.cur_token.ty, self.cur_token.literal });
         return;
+    }
+
+    //TODO col_width / aligin style
+    fn parseTable(self: *Parser) !void {
+        while (!self.curTokenIs(.TK_EOF) and !self.peekOtherTokenIs(self.cur_token.ty)) {
+            while (self.curTokenIs(.TK_SPACE) or self.curTokenIs(.TK_MINUS)) {
+                self.nextToken();
+            }
+
+            if (self.curTokenIs(.TK_STR)) {
+                try self.table_list.append(self.cur_token);
+                self.nextToken();
+            }
+
+            if (!self.table_context.cols_done and self.curTokenIs(.TK_VERTICAL)) {
+                if (self.peekTokenIs(.TK_BR)) {
+                    self.table_context.cols_done = true;
+                    self.nextToken();
+                    self.nextToken();
+                } else {
+                    self.table_context.cols += 1;
+                    self.nextToken();
+                }
+            }
+
+            self.nextToken();
+            if (self.curTokenIs(.TK_BR) and self.peekTokenIs(.TK_VERTICAL)) {
+                self.nextToken();
+                self.nextToken();
+            }
+            // std.debug.print("{any}==>`{s}`\n", .{ self.cur_token.ty, self.cur_token.literal });
+        }
+
+        var idx: usize = 0;
+        const len = self.table_list.items.len;
+        try self.out.append("<table><thead>");
+        while (idx < len) : (idx += 1) {
+            if (idx < self.table_context.cols) {
+                try self.out.append("<th>");
+                try self.out.append(trimRight(u8, self.table_list.items[idx].literal, " "));
+                try self.out.append("</th>");
+                continue;
+            }
+            if (idx == self.table_context.cols) {
+                // std.debug.print("cols: {s}\n", .{self.table_list.items[idx].literal});
+                try self.out.append("</thead>");
+                try self.out.append("<tbody>");
+            }
+
+            try self.out.append("<tr>");
+            var k: usize = idx;
+            while (k < idx + self.table_context.cols) : (k += 1) {
+                try self.out.append("<td>");
+                try self.out.append(trimRight(u8, self.table_list.items[k].literal, " "));
+                try self.out.append("</td>");
+            }
+            try self.out.append("</tr>");
+
+            if (k == len) {
+                // std.debug.print("{any}\n", .{k});
+                break;
+            }
+        }
+        try self.out.append("</tbody></table>");
+
+        self.resetTableContext();
+        return;
+    }
+
+    fn resetTableContext(self: *Parser) void {
+        self.table_context.cols = 1;
+        self.table_context.cols_done = false;
+        self.table_list.clearRetainingCapacity();
     }
 
     fn curTokenIs(self: *Parser, token: TokenType) bool {
@@ -1308,3 +1374,30 @@ test "parser raw html" {
 //     std.debug.print("--{s}\n", .{res});
 //     try std.testing.expect(std.mem.eql(u8, res, "<p>hello<br></p>"));
 // }
+
+test "parser table" {
+    var gpa = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    const al = gpa.allocator();
+    defer gpa.deinit();
+    const text =
+        \\| Syntax      | Description |
+        \\| ----------- | ----------- |
+        \\| Header      | Title       |
+        \\| Paragraph   | Text        |
+        \\
+        \\---
+        \\| Syntax      | Description |
+        \\| ----------- | ----------- |
+        \\| Header      | Title       |
+    ;
+
+    var lexer = Lexer.newLexer(text);
+    var parser = Parser.NewParser(&lexer, al);
+    defer parser.deinit();
+    try parser.parseProgram();
+
+    const str = try std.mem.join(al, "", parser.out.items);
+    const res = str[0..str.len];
+    // std.debug.print("{s}\n", .{res});
+    try std.testing.expect(std.mem.eql(u8, res, "<table><thead><th>Syntax</th><th>Description</th></thead><tbody><tr><td>Header</td><td>Title</td></tr><tr><td>Title</td><td>Paragraph</td></tr><tr><td>Paragraph</td><td>Text</td></tr></tbody></table><hr><table><thead><th>Syntax</th><th>Description</th></thead><tbody><tr><td>Header</td><td>Title</td></tr></tbody></table>"));
+}
