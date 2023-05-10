@@ -730,6 +730,7 @@ pub const Parser = struct {
         self.table_context.cols = 1;
         self.table_context.cols_done = false;
         self.table_list.clearRetainingCapacity();
+        self.table_context.align_style.clearRetainingCapacity();
     }
 
     fn curTokenIs(self: *Parser, token: TokenType) bool {
