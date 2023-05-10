@@ -26,6 +26,7 @@ pub const TokenType = enum {
     TK_CODELINE, // ``
     TK_CODE, // `
     TK_STRIKETHROUGH, // ~
+    TK_COLON,
     TK_EOF,
 };
 

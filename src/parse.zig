@@ -601,11 +601,42 @@ pub const Parser = struct {
         return;
     }
 
-    //TODO col_width / aligin style
     fn parseTable(self: *Parser) !void {
         while (!self.curTokenIs(.TK_EOF) and !self.peekOtherTokenIs(self.cur_token.ty)) {
-            while (self.curTokenIs(.TK_SPACE) or self.curTokenIs(.TK_MINUS)) {
+            while (self.curTokenIs(.TK_SPACE)) {
                 self.nextToken();
+            }
+
+            // :--- :---:
+            if (self.curTokenIs(.TK_COLON) and self.peekTokenIs(.TK_MINUS)) {
+                self.nextToken();
+                while (self.curTokenIs(.TK_MINUS)) {
+                    self.nextToken();
+                }
+                if (self.curTokenIs(.TK_COLON)) {
+                    try self.table_context.align_style.append(.Center);
+                    self.nextToken();
+                } else {
+                    try self.table_context.align_style.append(.Left);
+                }
+
+                while (self.curTokenIs(.TK_SPACE)) {
+                    self.nextToken();
+                }
+            }
+
+            // ---:
+            if (self.curTokenIs(.TK_MINUS)) {
+                while (self.curTokenIs(.TK_MINUS)) {
+                    self.nextToken();
+                }
+                if (self.curTokenIs(.TK_COLON)) {
+                    try self.table_context.align_style.append(.Right);
+                    self.nextToken();
+                }
+                while (self.curTokenIs(.TK_SPACE)) {
+                    self.nextToken();
+                }
             }
 
             if (self.curTokenIs(.TK_STR)) {
@@ -633,34 +664,61 @@ pub const Parser = struct {
         }
 
         var idx: usize = 0;
-        const len = self.table_list.items.len;
+        const len = self.table_list.items.len - 1;
+        const algin_len = self.table_context.align_style.items.len;
         try self.out.append("<table><thead>");
-        while (idx < len) : (idx += 1) {
-            if (idx < self.table_context.cols) {
-                try self.out.append("<th>");
-                try self.out.append(trimRight(u8, self.table_list.items[idx].literal, " "));
-                try self.out.append("</th>");
-                continue;
-            }
-            if (idx == self.table_context.cols) {
-                // std.debug.print("cols: {s}\n", .{self.table_list.items[idx].literal});
-                try self.out.append("</thead>");
-                try self.out.append("<tbody>");
-            }
 
+        while (idx < self.table_context.cols) : (idx += 1) {
+            if (algin_len == 0) {
+                try self.out.append("<th>");
+            } else {
+                switch (self.table_context.align_style.items[idx]) {
+                    .Left => {
+                        try self.out.append("<th style=\"text-align:left\">");
+                    },
+                    .Center => {
+                        try self.out.append("<th style=\"text-align:center\">");
+                    },
+                    .Right => {
+                        try self.out.append("<th style=\"text-align:right\">");
+                    },
+                }
+            }
+            try self.out.append(trimRight(u8, self.table_list.items[idx].literal, " "));
+            try self.out.append("</th>");
+        }
+
+        {
+            try self.out.append("</thead>");
+            try self.out.append("<tbody>");
+        }
+
+        idx = self.table_context.cols;
+        while (idx < len) : (idx += self.table_context.cols) {
             try self.out.append("<tr>");
             var k: usize = idx;
             while (k < idx + self.table_context.cols) : (k += 1) {
-                try self.out.append("<td>");
+                if (algin_len == 0) {
+                    try self.out.append("<td>");
+                } else {
+                    switch (self.table_context.align_style.items[
+                        @mod(k, algin_len)
+                    ]) {
+                        .Left => {
+                            try self.out.append("<td style=\"text-align:left\">");
+                        },
+                        .Center => {
+                            try self.out.append("<td style=\"text-align:center\">");
+                        },
+                        .Right => {
+                            try self.out.append("<td style=\"text-align:right\">");
+                        },
+                    }
+                }
                 try self.out.append(trimRight(u8, self.table_list.items[k].literal, " "));
                 try self.out.append("</td>");
             }
             try self.out.append("</tr>");
-
-            if (k == len) {
-                // std.debug.print("{any}\n", .{k});
-                break;
-            }
         }
         try self.out.append("</tbody></table>");
 
@@ -1380,15 +1438,15 @@ test "parser table" {
     const al = gpa.allocator();
     defer gpa.deinit();
     const text =
-        \\| Syntax      | Description |
-        \\| ----------- | ----------- |
-        \\| Header      | Title       |
-        \\| Paragraph   | Text        |
+        \\| Syntax      | Description | Test |
+        \\| :----------- | --------: |  :-----: |
+        \\| Header      | Title      |  will |
+        \\| Paragraph   | Text       |  why  |
         \\
         \\---
-        \\| Syntax      | Description |
-        \\| ----------- | ----------- |
-        \\| Header      | Title       |
+        // \\| Syntax      | Description |
+        // \\| ----------- | ----------- |
+        // \\| Header      | Title       |
     ;
 
     var lexer = Lexer.newLexer(text);
@@ -1399,5 +1457,5 @@ test "parser table" {
     const str = try std.mem.join(al, "", parser.out.items);
     const res = str[0..str.len];
     // std.debug.print("{s}\n", .{res});
-    try std.testing.expect(std.mem.eql(u8, res, "<table><thead><th>Syntax</th><th>Description</th></thead><tbody><tr><td>Header</td><td>Title</td></tr><tr><td>Title</td><td>Paragraph</td></tr><tr><td>Paragraph</td><td>Text</td></tr></tbody></table><hr><table><thead><th>Syntax</th><th>Description</th></thead><tbody><tr><td>Header</td><td>Title</td></tr></tbody></table>"));
+    try std.testing.expect(std.mem.eql(u8, res, "<table><thead><th style=\"text-align:left\">Syntax</th><th style=\"text-align:right\">Description</th><th style=\"text-align:center\">Test</th></thead><tbody><tr><td style=\"text-align:left\">Header</td><td style=\"text-align:right\">Title</td><td style=\"text-align:center\">will</td></tr><tr><td style=\"text-align:left\">Paragraph</td><td style=\"text-align:right\">Text</td><td style=\"text-align:center\">why</td></tr></tbody></table><hr>"));
 }
