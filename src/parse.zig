@@ -162,9 +162,19 @@ pub const Parser = struct {
             try self.parseCode();
         }
 
-        while (!self.peekOtherTokenIs(self.cur_token.ty) and self.cur_token.ty != .TK_EOF) {
+        if (self.cur_token.ty == .TK_LBRACE) {
+            self.nextToken();
+            try self.parseLink();
+        }
+
+        if (self.curTokenIs(.TK_LT)) {
+            self.nextToken();
+            try self.parseLinkWithLT();
+        }
+
+        while (self.cur_token.ty != .TK_EOF) {
             while (self.curTokenIs(.TK_BR)) {
-                if (self.curTokenIs(.TK_BR) and !self.peekTokenIs(.TK_BR)) {
+                if (!self.peekTokenIs(.TK_BR)) {
                     try self.out.append(self.cur_token.literal);
                 }
                 self.nextToken();
@@ -1222,6 +1232,7 @@ test "parser link" {
     const text =
         \\[link](https://github.com/)
         \\[link2](https://github.com/2)
+        \\hello[link](https://github.com/)
         \\
     ;
     var lexer = Lexer.newLexer(text);
@@ -1232,7 +1243,7 @@ test "parser link" {
     const str = try std.mem.join(al, "", parser.out.items);
     const res = str[0..str.len];
     // std.debug.print("{s} \n", .{res});
-    try std.testing.expect(std.mem.eql(u8, res, "<a href=\"https://github.com/\">link</a><a href=\"https://github.com/2\">link2</a>"));
+    try std.testing.expect(std.mem.eql(u8, res, "<a href=\"https://github.com/\">link</a><a href=\"https://github.com/2\">link2</a><p>hello<a href=\"https://github.com/\">link</a><br></p>"));
 }
 
 test "parser link 2" {
@@ -1242,6 +1253,7 @@ test "parser link 2" {
     const text =
         \\<https://github.com>
         \\<https://github.com/2>
+        \\hello<https://github.com>wooo
         \\
     ;
     var lexer = Lexer.newLexer(text);
@@ -1251,7 +1263,7 @@ test "parser link 2" {
 
     const str = try std.mem.join(al, "", parser.out.items);
     const res = str[0..str.len];
-    // std.debug.print("{s} \n", .{res});
+    std.debug.print("{s} \n", .{res});
     try std.testing.expect(std.mem.eql(u8, res, "<a href=\"https://github.com\">https://github.com</a><a href=\"https://github.com/2\">https://github.com/2</a>"));
 }
 
