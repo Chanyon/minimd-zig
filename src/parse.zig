@@ -352,9 +352,12 @@ pub const Parser = struct {
 
     fn parseUnorderedList(self: *Parser) !void {
         var spaces: u8 = 1;
-        if (self.curTokenIs(.TK_SPACE)) {
+        var unorderdlist: bool = false;
+        var is_space: bool = false;
+        if (self.curTokenIs(.TK_SPACE) and !self.peekTokenIs(.TK_LBRACE)) {
+            unorderdlist = true;
             self.nextToken();
-            while (!self.curTokenIs(.TK_EOF) or self.curTokenIs(.TK_MINUS)) {
+            while (!self.curTokenIs(.TK_EOF)) {
                 if (self.curTokenIs(.TK_BR)) {
                     spaces = 1;
                     self.nextToken();
@@ -380,45 +383,94 @@ pub const Parser = struct {
                 try self.unordered_list.append(.{ .spaces = spaces, .token = self.cur_token });
                 self.nextToken();
             }
+        } else {
+            self.nextToken();
+            self.nextToken();
+            // - [ ] task
+            if (self.curTokenIs(.TK_SPACE) or std.mem.eql(u8, self.cur_token.literal, "x") and self.peekTokenIs(.TK_RBRACE)) {
+                is_space = true;
+                self.nextToken();
+                self.nextToken();
+                try self.out.append("<div>");
+                while (!self.curTokenIs(.TK_EOF)) {
+                    // skip space
+                    while (self.curTokenIs(.TK_SPACE)) {
+                        self.nextToken();
+                    }
+                    if (self.curTokenIs(.TK_BR)) {
+                        self.nextToken();
+                        if (!self.curTokenIs(.TK_MINUS)) {
+                            break;
+                        } else {
+                            self.nextToken();
+                        }
+
+                        if (self.curTokenIs(.TK_SPACE) and self.peekTokenIs(.TK_LBRACE)) {
+                            self.nextToken();
+                            self.nextToken();
+                            if (self.curTokenIs(.TK_SPACE) or std.mem.eql(u8, self.cur_token.literal, "x") and self.peekTokenIs(.TK_RBRACE)) {
+                                if (self.curTokenIs(.TK_SPACE)) is_space = true else is_space = false;
+
+                                self.nextToken();
+                                self.nextToken();
+                                while (self.curTokenIs(.TK_SPACE)) {
+                                    self.nextToken();
+                                }
+                            }
+                        }
+                    }
+                    if (is_space) {
+                        try self.out.append("<input type=\"checkbox\">  ");
+                    } else {
+                        try self.out.append("<input type=\"checkbox\" checked>  ");
+                    }
+                    try self.out.append(self.cur_token.literal);
+                    try self.out.append("</input><br>");
+
+                    self.nextToken();
+                }
+                try self.out.append("</div>");
+            }
         }
 
-        var idx: usize = 1;
-        const len = self.unordered_list.items.len;
-        {
-            try self.out.append("<ul>");
-            try self.out.append("<li>");
-            try self.out.append(self.unordered_list.items[0].token.literal);
-            try self.out.append("</li>");
-        }
-        while (idx < len) : (idx += 1) {
-            var prev_idx: usize = 0;
-            while (prev_idx < idx) : (prev_idx += 1) {
-                if (self.unordered_list.items[idx].spaces == self.unordered_list.items[prev_idx].spaces) {
-                    if (self.unordered_list.items[idx].spaces < self.unordered_list.items[idx - 1].spaces) {
-                        try self.out.append("</ul>");
+        if (unorderdlist) {
+            var idx: usize = 1;
+            const len = self.unordered_list.items.len;
+            {
+                try self.out.append("<ul>");
+                try self.out.append("<li>");
+                try self.out.append(self.unordered_list.items[0].token.literal);
+                try self.out.append("</li>");
+            }
+            while (idx < len) : (idx += 1) {
+                var prev_idx: usize = 0;
+                while (prev_idx < idx) : (prev_idx += 1) {
+                    if (self.unordered_list.items[idx].spaces == self.unordered_list.items[prev_idx].spaces) {
+                        if (self.unordered_list.items[idx].spaces < self.unordered_list.items[idx - 1].spaces) {
+                            try self.out.append("</ul>");
+                        }
+                        try self.out.append("<li>");
+                        try self.out.append(self.unordered_list.items[idx].token.literal);
+                        try self.out.append("</li>");
+
+                        break;
                     }
+                }
+
+                if (self.unordered_list.items[idx].spaces > self.unordered_list.items[idx - 1].spaces) {
+                    try self.out.append("<ul>");
+
                     try self.out.append("<li>");
                     try self.out.append(self.unordered_list.items[idx].token.literal);
                     try self.out.append("</li>");
 
-                    break;
+                    if (idx == len - 1) {
+                        try self.out.append("</ul>");
+                    }
                 }
             }
-
-            if (self.unordered_list.items[idx].spaces > self.unordered_list.items[idx - 1].spaces) {
-                try self.out.append("<ul>");
-
-                try self.out.append("<li>");
-                try self.out.append(self.unordered_list.items[idx].token.literal);
-                try self.out.append("</li>");
-
-                if (idx == len - 1) {
-                    try self.out.append("</ul>");
-                    try self.out.append("</ul>");
-                }
-            }
+            try self.out.append("</ul>");
         }
-        try self.out.append("</ul>");
         // std.debug.print("{any}==>`{s}`\n", .{ self.cur_token.ty, self.cur_token.literal });
         return;
     }
@@ -1459,4 +1511,27 @@ test "parser table" {
     const res = str[0..str.len];
     // std.debug.print("{s}\n", .{res});
     try std.testing.expect(std.mem.eql(u8, res, "<table><thead><th style=\"text-align:left\">Syntax</th><th style=\"text-align:right\">Description</th><th style=\"text-align:center\">Test</th></thead><tbody><tr><td style=\"text-align:left\">Header</td><td style=\"text-align:right\">Title</td><td style=\"text-align:center\">will</td></tr><tr><td style=\"text-align:left\">Paragraph</td><td style=\"text-align:right\">Text</td><td style=\"text-align:center\">why</td></tr></tbody></table><hr>"));
+}
+
+test "parser task list" {
+    var gpa = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    const al = gpa.allocator();
+    defer gpa.deinit();
+    const text =
+        \\- [ ] task one
+        \\- [ ] task two
+        \\- [x] task three
+        \\
+        \\
+    ;
+
+    var lexer = Lexer.newLexer(text);
+    var parser = Parser.NewParser(&lexer, al);
+    defer parser.deinit();
+    try parser.parseProgram();
+
+    const str = try std.mem.join(al, "", parser.out.items);
+    const res = str[0..str.len];
+    // std.debug.print("{s}\n", .{res});
+    try std.testing.expect(std.mem.eql(u8, res, "<div><input type=\"checkbox\">  task one</input><br><input type=\"checkbox\">  task two</input><br><input type=\"checkbox\" checked>  task three</input><br></div>"));
 }
