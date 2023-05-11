@@ -77,6 +77,11 @@
   <p><a id="target-1" href="#src-1">[^1]</a>:  ooo</p>
   </section>
   ```
+- task list
+ ```
+ - [ ] task one
+ - [x] task two
+ ```
 
 ### TODO
 - [ ] 转义字符
@@ -87,3 +92,4 @@
 - [x] 表格语法
 - [x] 内嵌HTML
 - [x] 脚注(footnote)
+- [x] task list 
