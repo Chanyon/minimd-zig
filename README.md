@@ -68,9 +68,22 @@
    => <pre><code><br>{<br>  "width": "100px",<br>  "height": "100px",<br>  "fontSize": "16px",<br>  "color": "#ccc",<br>}<br></code></pre>
   ```
 
-### 未实现
+- footnote
+  ```
+  test[^1]
+  [^1]: ooooo
+  =>  <p>test<a id="src-1" href="#target-1">[1]</a></p>
+  <section>
+  <p><a id="target-1" href="#src-1">[^1]</a>:  ooo</p>
+  </section>
+  ```
+
+### TODO
+- [ ] 转义字符
+- [ ] 有序列表
+
+### DONE
 - [x] 无序列表
 - [x] 表格语法
 - [x] 内嵌HTML
-- [ ] 转义字符
-- [ ] 脚注
+- [x] 脚注(footnote)
