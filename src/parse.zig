@@ -14,6 +14,8 @@ pub const Parser = struct {
     unordered_list: std.ArrayList(Unordered),
     table_list: std.ArrayList(Token),
     table_context: TableContext,
+    footnote_list: std.ArrayList(Footnote),
+    is_parse_text: bool = false,
 
     const Unordered = struct {
         spaces: u16,
@@ -27,12 +29,18 @@ pub const Parser = struct {
         cols_done: bool,
     };
 
+    const Footnote = struct {
+        insert_text: []const u8,
+        detailed_text: []const u8,
+    };
+
     pub fn NewParser(lex: *Lexer, al: std.mem.Allocator) Parser {
         const list = std.ArrayList([]const u8).init(al);
         const unordered = std.ArrayList(Unordered).init(al);
         const table_list = std.ArrayList(Token).init(al);
         const align_style = std.ArrayList(Align).init(al);
-        var parser = Parser{ .allocator = al, .lex = lex, .prev_token = undefined, .cur_token = undefined, .peek_token = undefined, .out = list, .unordered_list = unordered, .table_list = table_list, .table_context = .{ .align_style = align_style, .cols = 1, .cols_done = false } };
+        const footnote_list = std.ArrayList(Footnote).init(al);
+        var parser = Parser{ .allocator = al, .lex = lex, .prev_token = undefined, .cur_token = undefined, .peek_token = undefined, .out = list, .unordered_list = unordered, .table_list = table_list, .table_context = .{ .align_style = align_style, .cols = 1, .cols_done = false }, .footnote_list = footnote_list };
         parser.nextToken();
         parser.nextToken();
         parser.nextToken();
@@ -44,6 +52,7 @@ pub const Parser = struct {
         self.unordered_list.deinit();
         self.table_list.deinit();
         self.table_context.align_style.deinit();
+        self.footnote_list.deinit();
     }
 
     fn nextToken(self: *Parser) void {
@@ -57,6 +66,8 @@ pub const Parser = struct {
             try self.parseStatement();
             self.nextToken();
         }
+        // footnote
+        try self.footnoteInsert();
     }
 
     fn parseStatement(self: *Parser) !void {
@@ -142,6 +153,8 @@ pub const Parser = struct {
     // \\# heading
     //? NOT:Line Break("  "=><br> || \n=><br>)
     fn parseText(self: *Parser) !void {
+        self.is_parse_text = true;
+
         try self.out.append("<p>");
         try self.out.append(self.prev_token.literal);
 
@@ -173,11 +186,12 @@ pub const Parser = struct {
         }
 
         while (self.cur_token.ty != .TK_EOF) {
-            while (self.curTokenIs(.TK_BR)) {
-                if (!self.peekTokenIs(.TK_BR)) {
-                    try self.out.append(self.cur_token.literal);
-                }
+            if (self.curTokenIs(.TK_BR)) {
+                try self.out.append(self.cur_token.literal);
                 self.nextToken();
+                if (self.curTokenIs(.TK_BR)) {
+                    break;
+                }
             }
 
             if (self.peekOtherTokenIs(self.cur_token.ty)) {
@@ -205,6 +219,8 @@ pub const Parser = struct {
         }
 
         try self.out.append("</p>");
+
+        self.is_parse_text = false;
         return;
     }
 
@@ -485,8 +501,8 @@ pub const Parser = struct {
         return;
     }
 
-    // [link](https://github.com)
     fn parseLink(self: *Parser) !void {
+        // [link](https://github.com)
         if (self.curTokenIs(.TK_STR)) {
             const str = self.cur_token.literal;
             if (self.peekTokenIs(.TK_RBRACE)) {
@@ -517,11 +533,49 @@ pub const Parser = struct {
                     try self.out.append(fmt);
                     self.nextToken();
                     self.nextToken();
+                }
+            }
+        }
+
+        // [^anchor link]:text
+        if (self.curTokenIs(.TK_INSERT)) {
+            self.nextToken();
+            var insert_text: []const u8 = undefined;
+            if (self.peekTokenIs(.TK_RBRACE)) {
+                insert_text = self.cur_token.literal;
+                if (self.is_parse_text) {
+                    const fmt = try std.fmt.allocPrint(self.allocator, "<a id=\"src-{s}\" href=\"#target-{s}\">[{s}]</a>", .{ insert_text, insert_text, insert_text });
+                    try self.out.append(fmt);
+                }
+                self.nextToken();
+                self.nextToken();
+                if (self.curTokenIs(.TK_COLON)) {
+                    self.nextToken();
+
+                    while (self.curTokenIs(.TK_SPACE)) {
+                        self.nextToken();
+                    }
+                    if (self.curTokenIs(.TK_STR)) {
+                        try self.footnote_list.append(.{ .insert_text = insert_text, .detailed_text = self.cur_token.literal });
+                        self.nextToken();
+                    }
                     // std.debug.print("{any}==>`{s}`\n", .{ self.cur_token.ty, self.cur_token.literal });
                 }
             }
         }
+
         return;
+    }
+
+    fn footnoteInsert(self: *Parser) !void {
+        if (self.footnote_list.items.len > 0) {
+            try self.out.append("<div><section>");
+            for (self.footnote_list.items) |footnote| {
+                const fmt = try std.fmt.allocPrint(self.allocator, "<p><a id=\"target-{s}\" href=\"#src-{s}\">[^{s}]</a>:  {s}</p>", .{ footnote.insert_text, footnote.insert_text, footnote.insert_text, footnote.detailed_text });
+                try self.out.append(fmt);
+            }
+            try self.out.append("</section></div>");
+        }
     }
 
     fn parseLinkWithLT(self: *Parser) !void {
@@ -801,7 +855,7 @@ pub const Parser = struct {
 
     fn peekOtherTokenIs(self: *Parser, token: TokenType) bool {
         _ = self;
-        const tokens = [_]TokenType{ .TK_MINUS, .TK_PLUS, .TK_BANG, .TK_UNDERLINE, .TK_VERTICAL, .TK_WELLNAME, .TK_NUM_DOT, .TK_CODEBLOCK };
+        const tokens = [_]TokenType{ .TK_MINUS, .TK_PLUS, .TK_BANG, .TK_UNDERLINE, .TK_VERTICAL, .TK_WELLNAME, .TK_NUM_DOT, .TK_CODEBLOCK, .TK_LBRACE };
 
         for (tokens) |v| {
             if (v == token) {
@@ -1263,8 +1317,8 @@ test "parser link 2" {
 
     const str = try std.mem.join(al, "", parser.out.items);
     const res = str[0..str.len];
-    std.debug.print("{s} \n", .{res});
-    try std.testing.expect(std.mem.eql(u8, res, "<a href=\"https://github.com\">https://github.com</a><a href=\"https://github.com/2\">https://github.com/2</a>"));
+    // std.debug.print("{s} \n", .{res});
+    try std.testing.expect(std.mem.eql(u8, res, "<a href=\"https://github.com\">https://github.com</a><a href=\"https://github.com/2\">https://github.com/2</a><p>hello<a href=\"https://github.com\">https://github.com</a>wooo<br></p>"));
 }
 
 test "parser image link" {
@@ -1546,4 +1600,29 @@ test "parser task list" {
     const res = str[0..str.len];
     // std.debug.print("{s}\n", .{res});
     try std.testing.expect(std.mem.eql(u8, res, "<div><input type=\"checkbox\">  task one</input><br><input type=\"checkbox\">  task two</input><br><input type=\"checkbox\" checked>  task three</input><br></div>"));
+}
+
+test "parser footnote" {
+    var gpa = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    const al = gpa.allocator();
+    defer gpa.deinit();
+    const text =
+        \\hello[^1]test
+        \\
+        \\
+        \\hello[^2]test
+        \\
+        \\[^1]: ooo
+        \\[^2]: qqq
+        \\---
+    ;
+    var lexer = Lexer.newLexer(text);
+    var parser = Parser.NewParser(&lexer, al);
+    defer parser.deinit();
+    try parser.parseProgram();
+
+    const str = try std.mem.join(al, "", parser.out.items);
+    const res = str[0..str.len];
+    // std.debug.print("{s} \n", .{res});
+    try std.testing.expect(std.mem.eql(u8, res, "<p>hello<a id=\"src-1\" href=\"#target-1\">[1]</a>test<br></p><p>hello<a id=\"src-2\" href=\"#target-2\">[2]</a>test<br></p><hr><div><section><p><a id=\"target-1\" href=\"#src-1\">[^1]</a>:  ooo</p><p><a id=\"target-2\" href=\"#src-2\">[^2]</a>:  qqq</p></section></div>"));
 }

@@ -74,6 +74,8 @@ pub const Lexer = struct {
             return token.newToken(.TK_STRIKETHROUGH, "~", 1);
         } else if (eql(u8, ch, ":")) {
             return token.newToken(.TK_COLON, ":", null);
+        } else if (eql(u8, ch, "^")) {
+            return token.newToken(.TK_INSERT, "^", null);
         } else {
             if (eql(u8, ch, "")) {
                 return token.newToken(.TK_EOF, "", null);
@@ -116,7 +118,7 @@ pub const Lexer = struct {
     }
 
     fn keyWord(ch: []const u8) bool {
-        const keys = [_][]const u8{ "\n", "*", "]", ")", ">", "~", "`", "_", "|" };
+        const keys = [_][]const u8{ "\n", "*", "]", ")", ">", "~", "`", "_", "|", "[", "<" };
         for (keys) |key| {
             if (eql(u8, ch, key)) {
                 return true;
@@ -323,4 +325,11 @@ test "lexer :" {
     const tk = lexer.nextToken();
     try std.testing.expect(eql(u8, tk.literal, ":"));
     try std.testing.expect(tk.ty == .TK_COLON);
+}
+
+test "lexer ^" {
+    var lexer = Lexer.newLexer("^^");
+    const tk = lexer.nextToken();
+    try std.testing.expect(eql(u8, tk.literal, "^"));
+    try std.testing.expect(tk.ty == .TK_INSERT);
 }
