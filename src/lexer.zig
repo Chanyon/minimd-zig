@@ -294,7 +294,7 @@ test "lexer string" {
     try std.testing.expect(tk.ty == .TK_STR);
 }
 
-test "lexer string" {
+test "lexer string2" {
     var lexer = Lexer.newLexer("qwer\n");
     const tk = lexer.nextToken();
     // std.debug.print("{s}\n", .{tk.literal});
