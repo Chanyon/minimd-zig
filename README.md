@@ -78,10 +78,17 @@
   </section>
   ```
 - task list
- ```
- - [ ] task one
- - [x] task two
- ```
+  ```
+  - [ ] task one
+  - [x] task two
+  ```
+- table
+  ```
+  | Syntax      | Description | Test |
+  | :---------- | ----------: | :-----: |
+  | Header      | Title       |  will |
+  | Paragraph   | Text        |  why  |
+  ```
 
 ### TODO
 - [ ] 转义字符
