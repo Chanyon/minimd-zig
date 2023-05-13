@@ -23,7 +23,6 @@ pub const Lexer = struct {
         const ch = self.ch;
         self.readChar();
 
-        //? StringHashMap
         if (eql(u8, ch, "+")) {
             return token.newToken(.TK_PLUS, "+", null);
         } else if (eql(u8, ch, "-")) {
@@ -76,6 +75,8 @@ pub const Lexer = struct {
             return token.newToken(.TK_COLON, ":", null);
         } else if (eql(u8, ch, "^")) {
             return token.newToken(.TK_INSERT, "^", null);
+        } else if (self.isdigit(ch)) {
+            return self.number();
         } else {
             if (eql(u8, ch, "")) {
                 return token.newToken(.TK_EOF, "", null);
@@ -104,17 +105,44 @@ pub const Lexer = struct {
 
     fn string(self: *Lexer) token.Token {
         const pos = self.pos;
+        var str: []const u8 = undefined;
         // abcdefgh\n;
         while (!keyWord(self.ch) and !self.isEnd()) {
             self.readChar();
         }
-        var str: []const u8 = undefined;
         if (keyWord(self.ch)) {
             str = self.source[pos - 1 .. self.read_pos - 1];
             return token.newToken(.TK_STR, str, null);
         }
         str = self.source[pos - 1 .. self.read_pos];
         return token.newToken(.TK_STR, str, null);
+    }
+
+    fn number(self: *Lexer) token.Token {
+        const pos = self.pos;
+        var num: []const u8 = undefined;
+
+        while (self.isdigit(self.ch)) {
+            self.readChar();
+        }
+        if (eql(u8, self.ch, ".")) {
+            self.readChar();
+            num = self.source[pos - 1 .. self.read_pos - 1];
+            return token.newToken(.TK_NUM_DOT, num, null);
+        }
+        num = self.source[pos - 1 .. self.read_pos - 1];
+        return token.newToken(.TK_NUM, num, null);
+    }
+
+    fn isdigit(self: *Lexer, ch: []const u8) bool {
+        _ = self;
+        const nums = [_][]const u8{ "0", "1", "2", "3", "4", "5", "6", "7", "8", "9" };
+        for (nums) |num| {
+            if (eql(u8, ch, num)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     fn keyWord(ch: []const u8) bool {
@@ -332,4 +360,18 @@ test "lexer ^" {
     const tk = lexer.nextToken();
     try std.testing.expect(eql(u8, tk.literal, "^"));
     try std.testing.expect(tk.ty == .TK_INSERT);
+}
+
+test "lexer 1." {
+    var lexer = Lexer.newLexer("111. ###");
+    const tk = lexer.nextToken();
+    try std.testing.expect(eql(u8, tk.literal, "111."));
+    try std.testing.expect(tk.ty == .TK_NUM_DOT);
+}
+
+test "lexer number" {
+    var lexer = Lexer.newLexer("111string");
+    const tk = lexer.nextToken();
+    try std.testing.expect(eql(u8, tk.literal, "111"));
+    try std.testing.expect(tk.ty == .TK_NUM);
 }

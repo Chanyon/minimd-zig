@@ -46,6 +46,6 @@ test "markdown parser" {
     defer parse.deinit();
     const str = try std.mem.join(al, "", parse.out.items);
     const res = str[0..str.len];
-    std.debug.print("{s} \n", .{res});
+    // std.debug.print("{s} \n", .{res});
     try std.testing.expect(std.mem.eql(u8, res, "<pre><code><br><p>test</p><br></code></pre><h1>heading</h1><p>hello world!<br></p><hr><strong><em>test</em></strong><img src=\"/assets/img/philly-magic-garden.jpg\" alt=\"img\"><a href=\"https://github.com/Chanyon\"><img src=\"/assets/img/ship.jpg\" alt=\"image\"></a><p>hello<s>test</s>world<br></p><hr><blockquote> hello</blockquote><blockquote> hello<blockquote> world <blockquote> test2</blockquote></blockquote></blockquote><div>hello world</div><ul><li>one</li><li>two</li><li>test</li></ul><strong>hello</strong>"));
 }

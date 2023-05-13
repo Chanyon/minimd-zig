@@ -28,6 +28,7 @@ pub const TokenType = enum {
     TK_STRIKETHROUGH, // ~
     TK_COLON, // :
     TK_INSERT, // ^
+    TK_NUM,
     TK_EOF,
 };
 
