@@ -90,12 +90,31 @@
   | Paragraph   | Text        |  why  |
   ```
 
+- unordered list
+  ```
+  - test
+    - test2
+        - test3
+    - test4
+  - test5
+  - test6
+  ```
+- ordered list
+  ```
+  1. test
+    1. test2
+        1. test3
+    2. test4
+  2. test5
+  3. test6
+  ```
+
 ### TODO
 - [ ] 转义字符
-- [ ] 有序列表
 
 ### DONE
 - [x] 无序列表
+- [x] 有序列表
 - [x] 表格语法
 - [x] 内嵌HTML
 - [x] 脚注(footnote)
