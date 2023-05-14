@@ -1684,7 +1684,7 @@ test "parser other" {
     const al = gpa.allocator();
     defer gpa.deinit();
     const text =
-        \\4 < 5;
+        \\4 \< 5;
         \\<= 5;
         \\ \[\]
         \\ \<123\>
@@ -1702,6 +1702,6 @@ test "parser other" {
 
     const str = try std.mem.join(al, "", parser.out.items);
     const res = str[0..str.len];
-    std.debug.print("--{s}\n", .{res});
-    try std.testing.expect(std.mem.eql(u8, res, "<p>4 < 5;<br><= 5;<br> []<br> &lt;123&gt;<br>3333</p><p>*12323*<br> _rewrew_<br></p>"));
+    // std.debug.print("--{s}\n", .{res});
+    try std.testing.expect(std.mem.eql(u8, res, "<p>4 &lt; 5;<br><= 5;<br> []<br> &lt;123&gt;<br>3333</p><p>*12323* ! # &sim; &minus;<br> _rewrew_ ()<br></p>"));
 }
