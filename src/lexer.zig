@@ -9,13 +9,30 @@ pub const Lexer = struct {
     read_pos: usize = 0,
     const Self = @This();
 
+    var escapecharTable = std.StringHashMap([]const u8).init(std.heap.page_allocator);
+
     pub fn newLexer(input: [:0]const u8) Lexer {
         var lexer = Lexer{
             .source = input,
             .ch = "",
         };
         lexer.readChar();
-
+        {
+            escapecharTable.put("<", "&lt;") catch unreachable;
+            escapecharTable.put(">", "&gt;") catch unreachable;
+            escapecharTable.put("^", "&and;") catch unreachable;
+            escapecharTable.put("*", "*") catch unreachable;
+            escapecharTable.put("|", "|") catch unreachable;
+            escapecharTable.put("[", "[") catch unreachable;
+            escapecharTable.put("]", "]") catch unreachable;
+            escapecharTable.put("_", "_") catch unreachable;
+            escapecharTable.put("-", "&minus;") catch unreachable;
+            escapecharTable.put("~", "&sim;") catch unreachable;
+            escapecharTable.put("(", "(") catch unreachable;
+            escapecharTable.put(")", ")") catch unreachable;
+            escapecharTable.put("#", "#") catch unreachable;
+            escapecharTable.put("!", "!") catch unreachable;
+        }
         return lexer;
     }
 
@@ -77,6 +94,13 @@ pub const Lexer = struct {
             return token.newToken(.TK_INSERT, "^", null);
         } else if (self.isdigit(ch)) {
             return self.number();
+        } else if (eql(u8, ch, "\\")) {
+            const c = self.peekChar();
+            if (escapeCharacter(c)) {
+                self.readChar();
+                return token.newToken(.TK_STR, escapecharTable.get(c).?, null);
+            }
+            return token.newToken(.TK_STR, c, null);
         } else {
             if (eql(u8, ch, "")) {
                 return token.newToken(.TK_EOF, "", null);
@@ -146,7 +170,17 @@ pub const Lexer = struct {
     }
 
     fn keyWord(ch: []const u8) bool {
-        const keys = [_][]const u8{ "\n", "*", "]", ")", ">", "~", "`", "_", "|", "[", "<" };
+        const keys = [_][]const u8{ "\n", "\\", "*", "]", ")", ">", "~", "`", "_", "|", "[", "<" };
+        for (keys) |key| {
+            if (eql(u8, ch, key)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    fn escapeCharacter(ch: []const u8) bool {
+        const keys = [_][]const u8{ "*", "_", "[", "]", "(", ")", "#", "-", "!", "|", "<", ">", "^", "~" };
         for (keys) |key| {
             if (eql(u8, ch, key)) {
                 return true;
@@ -343,7 +377,6 @@ test "lexer # Heading" {
     tk = lexer.nextToken();
     // std.debug.print("`{s}`\n", .{tk.literal});
     try std.testing.expect(eql(u8, tk.literal, "Heading"));
-
     tk = lexer.nextToken();
     try std.testing.expect(eql(u8, tk.literal, "<br>"));
 }
@@ -374,4 +407,12 @@ test "lexer number" {
     const tk = lexer.nextToken();
     try std.testing.expect(eql(u8, tk.literal, "111"));
     try std.testing.expect(tk.ty == .TK_NUM);
+}
+
+test "lexer \\" {
+    var lexer = Lexer.newLexer("\\_");
+    const tk = lexer.nextToken();
+
+    try std.testing.expect(eql(u8, tk.literal, "_"));
+    try std.testing.expect(tk.ty == .TK_STR);
 }

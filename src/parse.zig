@@ -1678,3 +1678,30 @@ test "parser footnote" {
     // std.debug.print("{s} \n", .{res});
     try std.testing.expect(std.mem.eql(u8, res, "<p>hello<a id=\"src-1\" href=\"#target-1\">[1]</a>test<br></p><p>hello<a id=\"src-2\" href=\"#target-2\">[2]</a>test<br></p><hr><div><section><p><a id=\"target-1\" href=\"#src-1\">[^1]</a>:  ooo</p><p><a id=\"target-2\" href=\"#src-2\">[^2]</a>:  qqq</p></section></div>"));
 }
+
+test "parser other" {
+    var gpa = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    const al = gpa.allocator();
+    defer gpa.deinit();
+    const text =
+        \\4 < 5;
+        \\<= 5;
+        \\ \[\]
+        \\ \<123\>
+        \\3333!
+        \\
+        \\ \*12323\* \! \# \~ \-
+        \\ \_rewrew\_ \(\)
+        \\
+    ;
+
+    var lexer = Lexer.newLexer(text);
+    var parser = Parser.NewParser(&lexer, al);
+    defer parser.deinit();
+    try parser.parseProgram();
+
+    const str = try std.mem.join(al, "", parser.out.items);
+    const res = str[0..str.len];
+    std.debug.print("--{s}\n", .{res});
+    try std.testing.expect(std.mem.eql(u8, res, "<p>4 < 5;<br><= 5;<br> []<br> &lt;123&gt;<br>3333</p><p>*12323*<br> _rewrew_<br></p>"));
+}
