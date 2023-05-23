@@ -20,6 +20,7 @@ pub const Parser = struct {
     const Unordered = struct {
         spaces: u16,
         token: Token,
+        list: std.ArrayList([]const u8),
     };
 
     const Align = enum { Left, Right, Center };
@@ -78,6 +79,7 @@ pub const Parser = struct {
             .TK_ASTERISKS, .TK_UNDERLINE => try self.parseStrong(),
             .TK_GT => try self.parseQuote(),
             .TK_MINUS => try self.parseBlankLine(),
+            .TK_PLUS => try self.parseOrderedOrTaskList(.TK_PLUS),
             .TK_LBRACE => try self.parseLink(),
             .TK_LT => try self.parseLinkWithLT(),
             .TK_BANG => try self.parseImage(),
@@ -190,7 +192,7 @@ pub const Parser = struct {
             if (self.curTokenIs(.TK_BR)) {
                 try self.out.append(self.cur_token.literal);
                 self.nextToken();
-                if (self.curTokenIs(.TK_BR)) {
+                if (self.curTokenIs(.TK_BR) or self.curTokenIs(.TK_SPACE)) {
                     break;
                 }
             }
@@ -381,14 +383,16 @@ pub const Parser = struct {
         var spaces: u8 = 1;
         var orderdlist: bool = false;
         var is_space: bool = false;
+        var out_len = self.out.items.len;
         if (self.curTokenIs(.TK_SPACE) and !self.peekTokenIs(.TK_LBRACE)) {
             orderdlist = true;
             self.nextToken();
             while (!self.curTokenIs(.TK_EOF)) {
-                if (self.curTokenIs(.TK_BR)) {
-                    spaces = 1;
+                if (self.curTokenIs(.TK_SPACE)) {
+                    if (self.prev_token.ty == .TK_SPACE) spaces = 2 else spaces = 1;
+
                     self.nextToken();
-                    if (!self.curTokenIs(.TK_MINUS) and !self.curTokenIs(.TK_NUM_DOT) and !self.curTokenIs(.TK_SPACE)) {
+                    if (!self.curTokenIs(parse_ty) and !self.curTokenIs(.TK_SPACE) and !self.curTokenIs(.TK_STR) and !self.curTokenIs(.TK_STRIKETHROUGH) and !self.curTokenIs(.TK_ASTERISKS) and !self.curTokenIs(.TK_UNDERLINE)) {
                         break;
                     }
                     if (self.curTokenIs(.TK_SPACE)) {
@@ -396,18 +400,59 @@ pub const Parser = struct {
                             spaces += 1;
                             self.nextToken();
                         }
-                        if (self.curTokenIs(.TK_MINUS) or self.curTokenIs(.TK_NUM_DOT)) {
+                        if (self.curTokenIs(parse_ty)) {
                             self.nextToken();
                             self.nextToken();
                         }
                     }
-                    if (self.curTokenIs(.TK_MINUS) or self.curTokenIs(.TK_NUM_DOT)) {
+                    if (self.curTokenIs(parse_ty)) {
                         self.nextToken();
                         self.nextToken();
                     }
                 }
-                // std.debug.print("{any}==>{s}\n", .{ self.cur_token.ty, self.cur_token.literal });
-                try self.unordered_list.append(.{ .spaces = spaces, .token = self.cur_token });
+                // skip ---
+                if ((self.curTokenIs(.TK_MINUS) and self.peek_token.ty == .TK_MINUS) or self.prev_token.ty == .TK_BR) {
+                    break;
+                }
+
+                // std.debug.print("{any}==>`{s}`\n", .{ self.cur_token.ty, self.cur_token.literal });
+                var unordered: Unordered = .{ .spaces = spaces, .token = self.cur_token, .list = std.ArrayList([]const u8).init(self.allocator) };
+                var idx: usize = 0;
+                const cur_out_len = blk: {
+                    switch (self.cur_token.ty) {
+                        .TK_STR => {
+                            self.nextToken();
+                            try self.parseText();
+                            break :blk self.out.items.len;
+                        },
+                        .TK_LBRACE => {
+                            self.nextToken();
+                            try self.parseLink();
+                            self.nextToken();
+                            break :blk self.out.items.len;
+                        },
+                        .TK_STRIKETHROUGH => {
+                            self.nextToken();
+                            try self.parseStrikethrough();
+                            self.nextToken();
+                            break :blk self.out.items.len;
+                        },
+                        .TK_ASTERISKS, .TK_UNDERLINE => {
+                            self.nextToken();
+                            try self.parseStrong();
+                            self.nextToken();
+                            break :blk self.out.items.len;
+                        },
+                        else => break :blk out_len,
+                    }
+                };
+
+                try unordered.list.appendSlice(self.out.items[out_len..cur_out_len]);
+                while (idx < cur_out_len - out_len) : (idx += 1) {
+                    _ = self.out.swapRemove(out_len);
+                }
+
+                try self.unordered_list.append(unordered);
                 self.nextToken();
             }
         } else {
@@ -464,28 +509,29 @@ pub const Parser = struct {
             var idx: usize = 1;
             const len = self.unordered_list.items.len;
             {
-                if (parse_ty == .TK_MINUS) {
+                if (parse_ty == .TK_MINUS or parse_ty == .TK_PLUS) {
                     try self.out.append("<ul>");
                 } else {
                     try self.out.append("<ol>");
                 }
                 try self.out.append("<li>");
-                try self.out.append(self.unordered_list.items[0].token.literal);
+                try self.out.appendSlice(self.unordered_list.items[0].list.items[0..]);
                 try self.out.append("</li>");
             }
+
             while (idx < len) : (idx += 1) {
                 var prev_idx: usize = 0;
                 while (prev_idx < idx) : (prev_idx += 1) {
                     if (self.unordered_list.items[idx].spaces == self.unordered_list.items[prev_idx].spaces) {
                         if (self.unordered_list.items[idx].spaces < self.unordered_list.items[idx - 1].spaces) {
-                            if (parse_ty == .TK_MINUS) {
+                            if (parse_ty == .TK_MINUS or parse_ty == .TK_PLUS) {
                                 try self.out.append("</ul>");
                             } else {
                                 try self.out.append("</ol>");
                             }
                         }
                         try self.out.append("<li>");
-                        try self.out.append(self.unordered_list.items[idx].token.literal);
+                        try self.out.appendSlice(self.unordered_list.items[idx].list.items[0..]);
                         try self.out.append("</li>");
 
                         break;
@@ -493,18 +539,18 @@ pub const Parser = struct {
                 }
 
                 if (self.unordered_list.items[idx].spaces > self.unordered_list.items[idx - 1].spaces) {
-                    if (parse_ty == .TK_MINUS) {
+                    if (parse_ty == .TK_MINUS or parse_ty == .TK_PLUS) {
                         try self.out.append("<ul>");
                     } else {
                         try self.out.append("<ol>");
                     }
 
                     try self.out.append("<li>");
-                    try self.out.append(self.unordered_list.items[idx].token.literal);
+                    try self.out.appendSlice(self.unordered_list.items[idx].list.items[0..]);
                     try self.out.append("</li>");
 
                     if (idx == len - 1) {
-                        if (parse_ty == .TK_MINUS) {
+                        if (parse_ty == .TK_MINUS or parse_ty == .TK_PLUS) {
                             try self.out.append("</ul>");
                         } else {
                             try self.out.append("</ol>");
@@ -512,7 +558,7 @@ pub const Parser = struct {
                     }
                 }
             }
-            if (parse_ty == .TK_MINUS) {
+            if (parse_ty == .TK_MINUS or parse_ty == .TK_PLUS) {
                 try self.out.append("</ul>");
             } else {
                 try self.out.append("</ol>");
@@ -873,6 +919,9 @@ pub const Parser = struct {
     }
 
     fn resetOrderList(self: *Parser) void {
+        for (self.unordered_list.items) |item| {
+            item.list.deinit();
+        }
         self.unordered_list.clearRetainingCapacity();
     }
 
@@ -1286,12 +1335,13 @@ test "parser <ul></ul> 1" {
     const al = gpa.allocator();
     defer gpa.deinit();
     const text =
-        \\- test
+        \\- test*123*
         \\  - test2
         \\      - test3
-        \\  - test4
-        \\- test5
-        \\- test6
+        \\  - [test4](https://github.com/)
+        \\- ~~test5~~
+        \\  - ***test6***
+        \\- __Bold__
         \\
         \\---
     ;
@@ -1303,7 +1353,7 @@ test "parser <ul></ul> 1" {
     const str = try std.mem.join(al, "", parser.out.items);
     const res = str[0..str.len];
     // std.debug.print("{s}\n", .{res});
-    try std.testing.expect(std.mem.eql(u8, res, "<ul><li>test</li><ul><li>test2</li><ul><li>test3</li></ul><li>test4</li></ul><li>test5</li><li>test6</li></ul><hr>"));
+    try std.testing.expect(std.mem.eql(u8, res, "<ul><li><p>test<em>123</em><br></p></li><ul><li><p>test2<br></p></li><ul><li><p>test3<br></p></li></ul><li><a href=\"https://github.com/\">test4</a></li></ul><li><p><s>test5</s></p></li><li><strong><em>test6</em></strong></li><ul><li><strong><em>test6</em></strong></li></ul><li><strong>Bold</strong></li></ul><hr>"));
 }
 
 test "parser <ol></ol>" {
@@ -1328,7 +1378,32 @@ test "parser <ol></ol>" {
     const str = try std.mem.join(al, "", parser.out.items);
     const res = str[0..str.len];
     // std.debug.print("{s} \n", .{res});
-    try std.testing.expect(std.mem.eql(u8, res, "<ol><li>test</li><ol><li>test2</li><ol><li>test3</li></ol><li>test4</li></ol><li>test5</li><li>test6</li></ol><hr>"));
+    try std.testing.expect(std.mem.eql(u8, res, "<ol><li><p>test<br></p></li><ol><li><p>test2<br></p></li><ol><li><p>test3<br></p></li></ol><li><p>test4<br></p></li></ol><li><p>test5<br></p></li><li><p>test6<br></p></li></ol><hr>"));
+}
+
+test "parser <ul></ul> 2" {
+    var gpa = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    const al = gpa.allocator();
+    defer gpa.deinit();
+    const text =
+        \\+ test
+        \\  + test2
+        \\      + test3
+        \\  + test4
+        \\+ test5
+        \\+ test6
+        \\
+        \\---
+    ;
+    var lexer = Lexer.newLexer(text);
+    var parser = Parser.NewParser(&lexer, al);
+    defer parser.deinit();
+    try parser.parseProgram();
+
+    const str = try std.mem.join(al, "", parser.out.items);
+    const res = str[0..str.len];
+    // std.debug.print("{s} \n", .{res});
+    try std.testing.expect(std.mem.eql(u8, res, "<ul><li><p>test<br></p></li><ul><li><p>test2<br></p></li><ul><li><p>test3<br></p></li></ul><li><p>test4<br></p></li></ul><li><p>test5<br></p></li><li><p>test6<br></p></li></ul><hr>"));
 }
 
 test "parser link" {
@@ -1575,6 +1650,8 @@ test "parser raw html" {
         \\- two
         \\
         \\# test raw html
+        \\
+        \\test
     ;
     var lexer = Lexer.newLexer(text);
     var parser = Parser.NewParser(&lexer, al);
@@ -1584,7 +1661,7 @@ test "parser raw html" {
     const str = try std.mem.join(al, "", parser.out.items);
     const res = str[0..str.len];
     // std.debug.print("{s} \n", .{res});
-    try std.testing.expect(std.mem.eql(u8, res, "<p>hello</p><div>world</div><ul><li>one</li><li>two</li></ul><h1>test raw html</h1>"));
+    try std.testing.expect(std.mem.eql(u8, res, "<p>hello</p><div>world</div><ul><li><p>one<br></p></li><li><p>two<br></p></li></ul><h1>test raw html</h1><p>test</p>"));
 }
 
 // test "parser windows newline" {
@@ -1686,12 +1763,12 @@ test "parser other" {
     const text =
         \\4 \< 5;
         \\<= 5;
-        \\ \[\]
-        \\ \<123\>
+        \\\[\]
+        \\\<123\>
         \\3333!
         \\
-        \\ \*12323\* \! \# \~ \-
-        \\ \_rewrew\_ \(\)
+        \\\*12323\* \! \# \~ \-
+        \\\_rewrew\_ \(\)
         \\
     ;
 
@@ -1703,5 +1780,5 @@ test "parser other" {
     const str = try std.mem.join(al, "", parser.out.items);
     const res = str[0..str.len];
     // std.debug.print("--{s}\n", .{res});
-    try std.testing.expect(std.mem.eql(u8, res, "<p>4 &lt; 5;<br><= 5;<br> []<br> &lt;123&gt;<br>3333</p><p>*12323* ! # &sim; &minus;<br> _rewrew_ ()<br></p>"));
+    try std.testing.expect(std.mem.eql(u8, res, "<p>4 &lt; 5;<br><= 5;<br>[]<br>&lt;123&gt;<br>3333</p><p>*12323* ! # &sim; &minus;<br>_rewrew_ ()<br></p>"));
 }
