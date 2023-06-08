@@ -383,86 +383,20 @@ pub const Parser = struct {
         var spaces: u8 = 1;
         var orderdlist: bool = false;
         var is_space: bool = false;
+        var is_task: bool = false;
         var out_len = self.out.items.len;
-        if (self.curTokenIs(.TK_SPACE) and !self.peekTokenIs(.TK_LBRACE)) {
+
+        if (self.curTokenIs(.TK_SPACE)) {
             orderdlist = true;
             self.nextToken();
-            while (!self.curTokenIs(.TK_EOF)) {
-                if (self.curTokenIs(.TK_SPACE)) {
-                    if (self.prev_token.ty == .TK_SPACE) spaces = 2 else spaces = 1;
-
-                    self.nextToken();
-                    if (!self.curTokenIs(parse_ty) and !self.curTokenIs(.TK_SPACE) and !self.curTokenIs(.TK_STR) and !self.curTokenIs(.TK_STRIKETHROUGH) and !self.curTokenIs(.TK_ASTERISKS) and !self.curTokenIs(.TK_UNDERLINE)) {
-                        break;
-                    }
-                    if (self.curTokenIs(.TK_SPACE)) {
-                        while (self.curTokenIs(.TK_SPACE)) {
-                            spaces += 1;
-                            self.nextToken();
-                        }
-                        if (self.curTokenIs(parse_ty)) {
-                            self.nextToken();
-                            self.nextToken();
-                        }
-                    }
-                    if (self.curTokenIs(parse_ty)) {
-                        self.nextToken();
-                        self.nextToken();
-                    }
-                }
-                // skip ---
-                if ((self.curTokenIs(.TK_MINUS) and self.peek_token.ty == .TK_MINUS) or self.prev_token.ty == .TK_BR) {
-                    break;
-                }
-
-                // std.debug.print("{any}==>`{s}`\n", .{ self.cur_token.ty, self.cur_token.literal });
-                var unordered: Unordered = .{ .spaces = spaces, .token = self.cur_token, .list = std.ArrayList([]const u8).init(self.allocator) };
-                var idx: usize = 0;
-                const cur_out_len = blk: {
-                    switch (self.cur_token.ty) {
-                        .TK_STR => {
-                            self.nextToken();
-                            try self.parseText();
-                            break :blk self.out.items.len;
-                        },
-                        .TK_LBRACE => {
-                            self.nextToken();
-                            try self.parseLink();
-                            self.nextToken();
-                            break :blk self.out.items.len;
-                        },
-                        .TK_STRIKETHROUGH => {
-                            self.nextToken();
-                            try self.parseStrikethrough();
-                            self.nextToken();
-                            break :blk self.out.items.len;
-                        },
-                        .TK_ASTERISKS, .TK_UNDERLINE => {
-                            self.nextToken();
-                            try self.parseStrong();
-                            self.nextToken();
-                            break :blk self.out.items.len;
-                        },
-                        else => break :blk out_len,
-                    }
-                };
-
-                try unordered.list.appendSlice(self.out.items[out_len..cur_out_len]);
-                while (idx < cur_out_len - out_len) : (idx += 1) {
-                    _ = self.out.swapRemove(out_len);
-                }
-
-                try self.unordered_list.append(unordered);
+            // - [ ] task or - [x] task
+            if (self.curTokenIs(.TK_LBRACE) and (self.peekTokenIs(.TK_SPACE) or std.mem.eql(u8, self.peek_token.literal, "x"))) {
+                is_task = true;
                 self.nextToken();
-            }
-        } else {
-            self.nextToken();
-            self.nextToken();
-            // - [ ] task
-            if (self.curTokenIs(.TK_SPACE) or std.mem.eql(u8, self.cur_token.literal, "x") and self.peekTokenIs(.TK_RBRACE)) {
-                is_space = true;
+                if (self.curTokenIs(.TK_SPACE)) is_space = true else is_space = false;
                 self.nextToken();
-                self.nextToken();
+                self.nextToken(); //skip token `]`
+
                 try self.out.append("<div>");
                 while (!self.curTokenIs(.TK_EOF)) {
                     // skip space
@@ -502,10 +436,80 @@ pub const Parser = struct {
                     self.nextToken();
                 }
                 try self.out.append("</div>");
+            } else {
+                while (!self.curTokenIs(.TK_EOF)) {
+                    if (self.curTokenIs(.TK_SPACE)) {
+                        if (self.prev_token.ty == .TK_SPACE) spaces = 2 else spaces = 1;
+
+                        self.nextToken();
+                        if (!self.curTokenIs(parse_ty) and !self.curTokenIs(.TK_SPACE) and !self.curTokenIs(.TK_STR) and !self.curTokenIs(.TK_STRIKETHROUGH) and !self.curTokenIs(.TK_ASTERISKS) and !self.curTokenIs(.TK_UNDERLINE) and !self.curTokenIs(.TK_LBRACE)) {
+                            // std.debug.print("{any}==>`{s}`\n", .{ self.cur_token.ty, self.cur_token.literal });
+                            break;
+                        }
+                        if (self.curTokenIs(.TK_SPACE)) {
+                            while (self.curTokenIs(.TK_SPACE)) {
+                                spaces += 1;
+                                self.nextToken();
+                            }
+                            if (self.curTokenIs(parse_ty)) {
+                                self.nextToken();
+                                self.nextToken();
+                            }
+                        }
+                        if (self.curTokenIs(parse_ty)) {
+                            self.nextToken();
+                            self.nextToken();
+                        }
+                    }
+                    // skip ---
+                    if ((self.curTokenIs(.TK_MINUS) and self.peek_token.ty == .TK_MINUS) or self.prev_token.ty == .TK_BR) {
+                        break;
+                    }
+
+                    // std.debug.print("{any}==>`{s}`\n", .{ self.cur_token.ty, self.cur_token.literal });
+                    var unordered: Unordered = .{ .spaces = spaces, .token = self.cur_token, .list = std.ArrayList([]const u8).init(self.allocator) };
+                    var idx: usize = 0;
+                    const cur_out_len = blk: {
+                        switch (self.cur_token.ty) {
+                            .TK_STR => {
+                                self.nextToken();
+                                try self.parseText();
+                                break :blk self.out.items.len;
+                            },
+                            .TK_LBRACE => {
+                                self.nextToken();
+                                try self.parseLink();
+                                self.nextToken();
+                                break :blk self.out.items.len;
+                            },
+                            .TK_STRIKETHROUGH => {
+                                self.nextToken();
+                                try self.parseStrikethrough();
+                                self.nextToken();
+                                break :blk self.out.items.len;
+                            },
+                            .TK_ASTERISKS, .TK_UNDERLINE => {
+                                self.nextToken();
+                                try self.parseStrong();
+                                self.nextToken();
+                                break :blk self.out.items.len;
+                            },
+                            else => break :blk out_len,
+                        }
+                    };
+
+                    try unordered.list.appendSlice(self.out.items[out_len..cur_out_len]);
+                    while (idx < cur_out_len - out_len) : (idx += 1) {
+                        _ = self.out.swapRemove(out_len);
+                    }
+
+                    try self.unordered_list.append(unordered);
+                    self.nextToken();
+                }
             }
         }
 
-        if (orderdlist) {
+        if (orderdlist and !is_task) {
             var idx: usize = 1;
             const len = self.unordered_list.items.len;
             {
@@ -1717,7 +1721,9 @@ test "parser task list" {
         \\- [ ] task two
         \\- [x] task three
         \\
-        \\
+        \\---
+        \\- task
+        \\- [Go jiaocheng](https://geektutu.com/post/quick-golang.html)
     ;
 
     var lexer = Lexer.newLexer(text);
@@ -1728,7 +1734,29 @@ test "parser task list" {
     const str = try std.mem.join(al, "", parser.out.items);
     const res = str[0..str.len];
     // std.debug.print("{s}\n", .{res});
-    try std.testing.expect(std.mem.eql(u8, res, "<div><input type=\"checkbox\">  task one</input><br><input type=\"checkbox\">  task two</input><br><input type=\"checkbox\" checked>  task three</input><br></div>"));
+    try std.testing.expect(std.mem.eql(u8, res, "<div><input type=\"checkbox\">  task one</input><br><input type=\"checkbox\">  task two</input><br><input type=\"checkbox\" checked>  task three</input><br></div><hr><ul><li><p>task<br></p></li><li><a href=\"https://geektutu.com/post/quick-golang.html\">Go jiaocheng</a></li></ul>"));
+}
+
+//bug
+test "parser list" {
+    var gpa = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    const al = gpa.allocator();
+    defer gpa.deinit();
+    const text =
+        \\- test
+        \\[Go jiaocheng](https://geektutu.com/post/quick-golang.html)
+        \\**test**
+    ;
+
+    var lexer = Lexer.newLexer(text);
+    var parser = Parser.NewParser(&lexer, al);
+    defer parser.deinit();
+    try parser.parseProgram();
+
+    const str = try std.mem.join(al, "", parser.out.items);
+    const res = str[0..str.len];
+    // std.debug.print("{s}\n", .{res});
+    try std.testing.expect(std.mem.eql(u8, res, "<ul><li><p>task<br><a href=\"https://geektutu.com/post/quick-golang.html\">Go jiaocheng</a></p></li></ul>"));
 }
 
 test "parser footnote" {
