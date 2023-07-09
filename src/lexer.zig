@@ -3,7 +3,7 @@ const token = @import("token.zig");
 const eql = std.mem.eql;
 
 pub const Lexer = struct {
-    source: [:0]const u8 = "",
+    source: []const u8 = "",
     ch: []const u8,
     pos: usize = 0,
     read_pos: usize = 0,
@@ -11,7 +11,7 @@ pub const Lexer = struct {
 
     var escapecharTable = std.StringHashMap([]const u8).init(std.heap.page_allocator);
 
-    pub fn newLexer(input: [:0]const u8) Lexer {
+    pub fn newLexer(input: []const u8) Lexer {
         var lexer = Lexer{
             .source = input,
             .ch = "",
