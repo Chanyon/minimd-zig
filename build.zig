@@ -7,6 +7,12 @@ pub fn build(b: *std.Build) void {
     //zig build -Ddocs=true
     const documention = b.option(bool, "docs", "Generate documentation") orelse false;
     const optimize = b.standardOptimizeOption(.{});
+
+    _ = b.addModule("minimdzig", .{
+        //
+        .source_file = .{ .path = "src/lib.zig" },
+    });
+
     const lib = b.addSharedLibrary(.{
         .name = "minimd-zig",
         .root_source_file = .{ .path = "src/lib.zig" },
