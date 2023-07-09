@@ -100,7 +100,7 @@ pub const Lexer = struct {
                 self.readChar();
                 return token.newToken(.TK_STR, escapecharTable.get(c).?, null);
             }
-            return token.newToken(.TK_STR, c, null);
+            return token.newToken(.TK_BACKSLASH, "\\", null);
         } else {
             if (eql(u8, ch, "")) {
                 return token.newToken(.TK_EOF, "", null);
@@ -415,4 +415,12 @@ test "lexer \\" {
 
     try std.testing.expect(eql(u8, tk.literal, "_"));
     try std.testing.expect(tk.ty == .TK_STR);
+}
+
+test "lexer \\ 2" {
+    var lexer = Lexer.newLexer("\\");
+    const tk = lexer.nextToken();
+
+    try std.testing.expect(eql(u8, tk.literal, "\\"));
+    try std.testing.expect(tk.ty == .TK_BACKSLASH);
 }

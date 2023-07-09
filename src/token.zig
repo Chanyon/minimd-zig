@@ -29,6 +29,7 @@ pub const TokenType = enum {
     TK_COLON, // :
     TK_INSERT, // ^
     TK_NUM,
+    TK_BACKSLASH, // \
     TK_EOF,
 };
 

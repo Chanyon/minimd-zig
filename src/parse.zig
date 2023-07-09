@@ -41,7 +41,19 @@ pub const Parser = struct {
         const table_list = std.ArrayList(Token).init(al);
         const align_style = std.ArrayList(Align).init(al);
         const footnote_list = std.ArrayList(Footnote).init(al);
-        var parser = Parser{ .allocator = al, .lex = lex, .prev_token = undefined, .cur_token = undefined, .peek_token = undefined, .out = list, .unordered_list = unordered, .table_list = table_list, .table_context = .{ .align_style = align_style, .cols = 1, .cols_done = false }, .footnote_list = footnote_list };
+        var parser = Parser{
+            //
+            .allocator = al,
+            .lex = lex,
+            .prev_token = undefined,
+            .cur_token = undefined,
+            .peek_token = undefined,
+            .out = list,
+            .unordered_list = unordered,
+            .table_list = table_list,
+            .table_context = .{ .align_style = align_style, .cols = 1, .cols_done = false },
+            .footnote_list = footnote_list,
+        };
         parser.nextToken();
         parser.nextToken();
         parser.nextToken();
@@ -157,6 +169,7 @@ pub const Parser = struct {
     //? NOT:Line Break("  "=><br> || \n=><br>)
     fn parseText(self: *Parser) !void {
         self.is_parse_text = true;
+        var is_backslash = false;
 
         try self.out.append("<p>");
         try self.out.append(self.prev_token.literal);
@@ -189,12 +202,21 @@ pub const Parser = struct {
         }
 
         while (self.cur_token.ty != .TK_EOF) {
+            if (self.cur_token.ty == .TK_BACKSLASH) {
+                is_backslash = true;
+                self.nextToken();
+            }
             if (self.curTokenIs(.TK_BR)) {
                 try self.out.append(self.cur_token.literal);
                 self.nextToken();
-                if (self.curTokenIs(.TK_BR) or self.curTokenIs(.TK_SPACE)) {
+                if (self.curTokenIs(.TK_BR) or (self.curTokenIs(.TK_SPACE) and !is_backslash)) {
                     break;
                 }
+                // if (self.curTokenIs(.TK_SPACE)) {
+                // while (self.curTokenIs(.TK_SPACE)) {
+                //   self.nextToken();
+                // }
+                // }
             }
 
             if (self.peekOtherTokenIs(self.cur_token.ty)) {
@@ -214,11 +236,16 @@ pub const Parser = struct {
                         try self.parseBackquotes();
                         // std.debug.print("1 {any}==>`{s}`\n", .{ self.cur_token.ty, self.cur_token.literal });
                     },
+                    .TK_LBRACE => {
+                        self.nextToken();
+                        try self.parseLink();
+                    },
                     else => {},
                 }
             }
             try self.out.append(self.cur_token.literal);
             self.nextToken();
+            is_backslash = false;
         }
 
         try self.out.append("</p>");
@@ -617,7 +644,7 @@ pub const Parser = struct {
             if (self.peekTokenIs(.TK_RBRACE)) {
                 insert_text = self.cur_token.literal;
                 if (self.is_parse_text) {
-                    const fmt = try std.fmt.allocPrint(self.allocator, "<a id=\"src-{s}\" href=\"#target-{s}\">[{s}]</a>", .{ insert_text, insert_text, insert_text });
+                    const fmt = try std.fmt.allocPrint(self.allocator, "<a id=\"src-{s}\" href=\"#target-{s}\"><sup>[{s}]</sup></a>", .{ insert_text, insert_text, insert_text });
                     try self.out.append(fmt);
                 }
                 self.nextToken();
@@ -935,7 +962,7 @@ pub const Parser = struct {
 
     fn peekOtherTokenIs(self: *Parser, token: TokenType) bool {
         _ = self;
-        const tokens = [_]TokenType{ .TK_MINUS, .TK_PLUS, .TK_BANG, .TK_UNDERLINE, .TK_VERTICAL, .TK_WELLNAME, .TK_NUM_DOT, .TK_CODEBLOCK, .TK_LBRACE };
+        const tokens = [_]TokenType{ .TK_MINUS, .TK_PLUS, .TK_BANG, .TK_UNDERLINE, .TK_VERTICAL, .TK_WELLNAME, .TK_NUM_DOT, .TK_CODEBLOCK };
 
         for (tokens) |v| {
             if (v == token) {
@@ -962,7 +989,7 @@ pub const Parser = struct {
         _ = self;
         const html_tag_list = [_][]const u8{ "div", "a", "p", "ul", "li", "ol", "dt", "dd", "span", "img", "table" };
         for (html_tag_list) |value| {
-            if (std.mem.eql(u8, value, str)) {
+            if (std.mem.startsWith(u8, str, value)) {
                 return true;
             }
         }
@@ -1643,7 +1670,7 @@ test "parser raw html" {
     const al = gpa.allocator();
     defer gpa.deinit();
     const text =
-        \\<p>hello</p>
+        \\<p style="font-size: 24px;">hello</p>
         \\<div>world
         \\</div>
         \\
@@ -1665,7 +1692,7 @@ test "parser raw html" {
     const str = try std.mem.join(al, "", parser.out.items);
     const res = str[0..str.len];
     // std.debug.print("{s} \n", .{res});
-    try std.testing.expect(std.mem.eql(u8, res, "<p>hello</p><div>world</div><ul><li><p>one<br></p></li><li><p>two<br></p></li></ul><h1>test raw html</h1><p>test</p>"));
+    try std.testing.expect(std.mem.eql(u8, res, "<p style=\"font-size: 24px;\">hello</p><div>world</div><ul><li><p>one<br></p></li><li><p>two<br></p></li></ul><h1>test raw html</h1><p>test</p>"));
 }
 
 // test "parser windows newline" {
@@ -1737,15 +1764,16 @@ test "parser task list" {
     try std.testing.expect(std.mem.eql(u8, res, "<div><input type=\"checkbox\">  task one</input><br><input type=\"checkbox\">  task two</input><br><input type=\"checkbox\" checked>  task three</input><br></div><hr><ul><li><p>task<br></p></li><li><a href=\"https://geektutu.com/post/quick-golang.html\">Go jiaocheng</a></li></ul>"));
 }
 
-//bug
 test "parser list" {
     var gpa = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     const al = gpa.allocator();
     defer gpa.deinit();
     const text =
-        \\- test
-        \\[Go jiaocheng](https://geektutu.com/post/quick-golang.html)
-        \\**test**
+        \\- test \
+        \\  [Go jiaocheng](https://geektutu.com/post/quick-golang.html) \
+        \\  test1
+        \\  - test2 \
+        \\    hello\
     ;
 
     var lexer = Lexer.newLexer(text);
@@ -1756,7 +1784,7 @@ test "parser list" {
     const str = try std.mem.join(al, "", parser.out.items);
     const res = str[0..str.len];
     // std.debug.print("{s}\n", .{res});
-    try std.testing.expect(std.mem.eql(u8, res, "<ul><li><p>task<br><a href=\"https://geektutu.com/post/quick-golang.html\">Go jiaocheng</a></p></li></ul>"));
+    try std.testing.expect(std.mem.eql(u8, res, "<ul><li><p>test <br>  <a href=\"https://geektutu.com/post/quick-golang.html\">Go jiaocheng</a> <br>  test1<br></p></li><ul><li><p>test2 <br>    hello</p></li></ul></ul>"));
 }
 
 test "parser footnote" {
@@ -1781,7 +1809,7 @@ test "parser footnote" {
     const str = try std.mem.join(al, "", parser.out.items);
     const res = str[0..str.len];
     // std.debug.print("{s} \n", .{res});
-    try std.testing.expect(std.mem.eql(u8, res, "<p>hello<a id=\"src-1\" href=\"#target-1\">[1]</a>test<br></p><p>hello<a id=\"src-2\" href=\"#target-2\">[2]</a>test<br></p><hr><div><section><p><a id=\"target-1\" href=\"#src-1\">[^1]</a>:  ooo</p><p><a id=\"target-2\" href=\"#src-2\">[^2]</a>:  qqq</p></section></div>"));
+    try std.testing.expect(std.mem.eql(u8, res, "<p>hello<a id=\"src-1\" href=\"#target-1\"><sup>[1]</sup></a>test<br></p><p>hello<a id=\"src-2\" href=\"#target-2\"><sup>[2]</sup></a>test<br></p><hr><div><section><p><a id=\"target-1\" href=\"#src-1\">[^1]</a>:  ooo</p><p><a id=\"target-2\" href=\"#src-2\">[^2]</a>:  qqq</p></section></div>"));
 }
 
 test "parser other" {
@@ -1809,4 +1837,28 @@ test "parser other" {
     const res = str[0..str.len];
     // std.debug.print("--{s}\n", .{res});
     try std.testing.expect(std.mem.eql(u8, res, "<p>4 &lt; 5;<br><= 5;<br>[]<br>&lt;123&gt;<br>3333</p><p>*12323* ! # &sim; &minus;<br>_rewrew_ ()<br></p>"));
+}
+
+test "parser multiple line \\" {
+    var gpa = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    const al = gpa.allocator();
+    defer gpa.deinit();
+    const text =
+        \\- A1 \
+        \\  **text** \
+        \\  hello
+        \\  - B2 \
+        \\    world! \
+        \\    dcy
+        \\- C3
+    ;
+    var lexer = Lexer.newLexer(text);
+    var parser = Parser.NewParser(&lexer, al);
+    defer parser.deinit();
+    try parser.parseProgram();
+
+    const str = try std.mem.join(al, "", parser.out.items);
+    const res = str[0..str.len];
+    // std.debug.print("{s} \n", .{res});
+    try std.testing.expect(std.mem.eql(u8, res, "<ul><li><p>A1 <br>  <strong>text</strong> <br>  hello<br></p></li><ul><li><p>B2 <br>    world! <br>    dcy<br></p></li></ul><li><p>C3</p></li></ul>"));
 }
