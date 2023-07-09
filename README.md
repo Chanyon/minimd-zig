@@ -117,7 +117,6 @@
   ```
 
 ### TODO
-- [ ] html tag inline style
 - [ ] code => ```lang ```
 
 ### DONE
@@ -128,3 +127,4 @@
 - [x] 脚注(footnote)
 - [x] task list 
 - [x] 转义字符
+- [x] html tag inline style
