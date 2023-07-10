@@ -802,11 +802,10 @@ pub const Parser = struct {
     fn parseCodeBlock(self: *Parser) !void {
         try self.out.append("<pre><code>");
         while (!self.curTokenIs(.TK_EOF) and !self.curTokenIs(.TK_CODEBLOCK)) {
-            // if (self.curTokenIs(.TK_BR)) {
-            //     try self.out.append("\n");
-            //     self.nextToken();
-            // }
+            try self.out.append("<span>");
             try self.out.append(self.cur_token.literal);
+            try self.out.append("</span>");
+
             self.nextToken();
         }
         if (self.curTokenIs(.TK_CODEBLOCK)) {
@@ -1623,8 +1622,6 @@ test "parser code 4" {
         \\{
         \\  "width": "100px",
         \\  "height": "100px",
-        \\  "fontSize": "16px",
-        \\  "color": "#ccc",
         \\}
         \\```
         \\
@@ -1637,7 +1634,7 @@ test "parser code 4" {
     const str = try std.mem.join(al, "", parser.out.items);
     const res = str[0..str.len];
     // std.debug.print("{s} \n", .{res});
-    try std.testing.expect(std.mem.eql(u8, res, "<pre><code><br>{<br>  \"width\": \"100px\",<br>  \"height\": \"100px\",<br>  \"fontSize\": \"16px\",<br>  \"color\": \"#ccc\",<br>}<br></code></pre>"));
+    try std.testing.expect(std.mem.eql(u8, res, "<pre><code><span><br></span><span>{</span><span><br></span><span> </span><span> </span><span>\"width\": \"100px\",</span><span><br></span><span> </span><span> </span><span>\"height\": \"100px\",</span><span><br></span><span>}</span><span><br></span></code></pre>"));
 }
 
 test "parser code 5" {
@@ -1662,7 +1659,7 @@ test "parser code 5" {
     const str = try std.mem.join(al, "", parser.out.items);
     const res = str[0..str.len];
     // std.debug.print("{s} \n", .{res});
-    try std.testing.expect(std.mem.eql(u8, res, "<pre><code><br><p>test</p><br>---<br></code></pre><pre><code><br><code></code><br></code></pre>"));
+    try std.testing.expect(std.mem.eql(u8, res, "<pre><code><span><br></span><span><</span><span>p</span><span>></span><span>test</span><span><</span><span>/p</span><span>></span><span><br></span><span>-</span><span>-</span><span>-</span><span><br></span></code></pre><pre><code><span><br></span><span><</span><span>code</span><span>></span><span><</span><span>/code</span><span>></span><span><br></span></code></pre>"));
 }
 
 test "parser raw html" {
@@ -1769,11 +1766,17 @@ test "parser list" {
     const al = gpa.allocator();
     defer gpa.deinit();
     const text =
+        \\hello 
         \\- test \
         \\  [Go jiaocheng](https://geektutu.com/post/quick-golang.html) \
         \\  test1
+        \\
         \\  - test2 \
-        \\    hello\
+        \\    hello
+        \\
+        \\    - test3
+        \\
+        \\test4   
     ;
 
     var lexer = Lexer.newLexer(text);
@@ -1784,7 +1787,7 @@ test "parser list" {
     const str = try std.mem.join(al, "", parser.out.items);
     const res = str[0..str.len];
     // std.debug.print("{s}\n", .{res});
-    try std.testing.expect(std.mem.eql(u8, res, "<ul><li><p>test <br>  <a href=\"https://geektutu.com/post/quick-golang.html\">Go jiaocheng</a> <br>  test1<br></p></li><ul><li><p>test2 <br>    hello</p></li></ul></ul>"));
+    try std.testing.expect(std.mem.eql(u8, res, "<p>hello <br></p><ul><li><p>test <br>  <a href=\"https://geektutu.com/post/quick-golang.html\">Go jiaocheng</a> <br>  test1<br></p></li><ul><li><p>test2 <br>    hello<br></p></li><ul><li><p>test3<br></p></li></ul></ul><p>test4   </p>"));
 }
 
 test "parser footnote" {
