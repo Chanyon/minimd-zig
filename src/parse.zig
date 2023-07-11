@@ -800,10 +800,22 @@ pub const Parser = struct {
     }
 
     fn parseCodeBlock(self: *Parser) !void {
-        try self.out.append("<pre><code>");
+        //```zig
+        if (self.curTokenIs(.TK_STR)) {
+            try self.out.append("<pre><code class=\"language-");
+            try self.out.append(self.cur_token.literal);
+            try self.out.append("\">");
+            self.nextToken();
+        } else {
+            try self.out.append("<pre><code>");
+        }
         while (!self.curTokenIs(.TK_EOF) and !self.curTokenIs(.TK_CODEBLOCK)) {
             try self.out.append("<span>");
-            try self.out.append(self.cur_token.literal);
+            if (self.curTokenIs(.TK_BR)) {
+                try self.out.append("\n");
+            } else {
+                try self.out.append(self.cur_token.literal);
+            }
             try self.out.append("</span>");
 
             self.nextToken();
@@ -1618,7 +1630,7 @@ test "parser code 4" {
     const al = gpa.allocator();
     defer gpa.deinit();
     const text =
-        \\```
+        \\```js
         \\{
         \\  "width": "100px",
         \\  "height": "100px",
@@ -1634,7 +1646,7 @@ test "parser code 4" {
     const str = try std.mem.join(al, "", parser.out.items);
     const res = str[0..str.len];
     // std.debug.print("{s} \n", .{res});
-    try std.testing.expect(std.mem.eql(u8, res, "<pre><code><span><br></span><span>{</span><span><br></span><span> </span><span> </span><span>\"width\": \"100px\",</span><span><br></span><span> </span><span> </span><span>\"height\": \"100px\",</span><span><br></span><span>}</span><span><br></span></code></pre>"));
+    try std.testing.expect(std.mem.eql(u8, res, "<pre><code class=\"language-js\"><span>\n</span><span>{</span><span>\n</span><span> </span><span> </span><span>\"width\": \"100px\",</span><span>\n</span><span> </span><span> </span><span>\"height\": \"100px\",</span><span>\n</span><span>}</span><span>\n</span></code></pre>"));
 }
 
 test "parser code 5" {
@@ -1659,7 +1671,7 @@ test "parser code 5" {
     const str = try std.mem.join(al, "", parser.out.items);
     const res = str[0..str.len];
     // std.debug.print("{s} \n", .{res});
-    try std.testing.expect(std.mem.eql(u8, res, "<pre><code><span><br></span><span><</span><span>p</span><span>></span><span>test</span><span><</span><span>/p</span><span>></span><span><br></span><span>-</span><span>-</span><span>-</span><span><br></span></code></pre><pre><code><span><br></span><span><</span><span>code</span><span>></span><span><</span><span>/code</span><span>></span><span><br></span></code></pre>"));
+    try std.testing.expect(std.mem.eql(u8, res, "<pre><code><span>\n</span><span><</span><span>p</span><span>></span><span>test</span><span><</span><span>/p</span><span>></span><span>\n</span><span>-</span><span>-</span><span>-</span><span>\n</span></code></pre><pre><code><span>\n</span><span><</span><span>code</span><span>></span><span><</span><span>/code</span><span>></span><span>\n</span></code></pre>"));
 }
 
 test "parser raw html" {
