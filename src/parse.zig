@@ -16,6 +16,7 @@ pub const Parser = struct {
     table_context: TableContext,
     footnote_list: std.ArrayList(Footnote),
     is_parse_text: bool = false,
+    title_nav: std.ArrayList([]const u8),
 
     const Unordered = struct {
         spaces: u16,
@@ -41,6 +42,7 @@ pub const Parser = struct {
         const table_list = std.ArrayList(Token).init(al);
         const align_style = std.ArrayList(Align).init(al);
         const footnote_list = std.ArrayList(Footnote).init(al);
+        const title_nav = std.ArrayList([]const u8).init(al);
         var parser = Parser{
             //
             .allocator = al,
@@ -53,6 +55,7 @@ pub const Parser = struct {
             .table_list = table_list,
             .table_context = .{ .align_style = align_style, .cols = 1, .cols_done = false },
             .footnote_list = footnote_list,
+            .title_nav = title_nav,
         };
         parser.nextToken();
         parser.nextToken();
@@ -66,6 +69,7 @@ pub const Parser = struct {
         self.table_list.deinit();
         self.table_context.align_style.deinit();
         self.footnote_list.deinit();
+        self.title_nav.deinit();
     }
 
     fn nextToken(self: *Parser) void {
@@ -142,20 +146,28 @@ pub const Parser = struct {
             }
             try self.out.append("</p>");
         } else {
-            const fmt = try std.fmt.allocPrint(self.allocator, "<h{}>", .{level});
+            self.nextToken(); //skip space
+
+            const random = std.crypto.random.float(f32);
+
+            const fmt = try std.fmt.allocPrint(self.allocator, "<h{} id=\"target-{}\">", .{ level, random });
+            const atage = try std.fmt.allocPrint(self.allocator, "<li><a href=\"#target-{}\">", .{random});
+
+            try self.title_nav.append(atage);
             try self.out.append(fmt);
+
             while (!self.curTokenIs(.TK_BR) and self.cur_token.ty != .TK_EOF) {
-                if (self.cur_token.ty == .TK_SPACE) {
-                    self.nextToken();
-                    continue;
-                }
                 try self.out.append(self.cur_token.literal);
+                try self.title_nav.append(self.cur_token.literal);
+
                 self.nextToken();
             }
 
             // std.debug.print("{any}==>{s}\n", .{self.cur_token.ty, self.cur_token.literal});
             const fmt2 = try std.fmt.allocPrint(self.allocator, "</h{}>", .{level});
+
             try self.out.append(fmt2);
+            try self.title_nav.append("</a></li>");
         }
         while (self.curTokenIs(.TK_BR)) {
             self.nextToken();
@@ -1072,7 +1084,7 @@ test "parser heading 4" {
 
     const str = try std.mem.join(al, "", parser.out.items);
     const res = str[0..str.len];
-    // std.debug.print("{s} \n", .{res});
+    std.debug.print("{s} \n", .{res});
     try std.testing.expect(std.mem.eql(u8, res, "<h1>hello</h1><h3>heading</h3>"));
 }
 
@@ -1877,3 +1889,24 @@ test "parser multiple line \\" {
     // std.debug.print("{s} \n", .{res});
     try std.testing.expect(std.mem.eql(u8, res, "<ul><li><p>A1 <br>  <strong>text</strong> <br>  hello<br></p></li><ul><li><p>B2 <br>    world! <br>    dcy<br></p></li></ul><li><p>C3</p></li></ul>"));
 }
+
+// test "title_nav list" {
+//     var gpa = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+//     const al = gpa.allocator();
+//     defer gpa.deinit();
+//     const text =
+//         \\### A1
+//         \\### A2
+//         \\### A3
+//         \\### A4
+//     ;
+//     var lexer = Lexer.newLexer(text);
+//     var parser = Parser.NewParser(&lexer, al);
+//     defer parser.deinit();
+//     try parser.parseProgram();
+
+//     const str = try std.mem.join(al, "", parser.title_nav.items);
+//     const res = str[0..str.len];
+//     std.debug.print("{s} \n", .{res});
+//     try std.testing.expect(std.mem.eql(u8, res, ""));
+// }
