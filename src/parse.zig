@@ -3,6 +3,7 @@ const trimRight = std.mem.trimRight;
 const Lexer = @import("lexer.zig").Lexer;
 const Token = @import("token.zig").Token;
 const TokenType = @import("token.zig").TokenType;
+const UUID = @import("uuid").UUID;
 
 pub const Parser = struct {
     allocator: std.mem.Allocator,
@@ -148,10 +149,9 @@ pub const Parser = struct {
         } else {
             self.nextToken(); //skip space
 
-            const random = std.crypto.random.float(f32);
-
-            const fmt = try std.fmt.allocPrint(self.allocator, "<h{} id=\"target-{}\">", .{ level, random });
-            const atage = try std.fmt.allocPrint(self.allocator, "<li><a href=\"#target-{}\">", .{random});
+            const uuid = UUID.init();
+            const fmt = try std.fmt.allocPrint(self.allocator, "<h{} id=\"target-{}\">", .{ level, uuid });
+            const atage = try std.fmt.allocPrint(self.allocator, "<li><a href=\"#target-{}\">", .{uuid});
 
             try self.title_nav.append(atage);
             try self.out.append(fmt);

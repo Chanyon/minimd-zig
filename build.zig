@@ -13,12 +13,18 @@ pub fn build(b: *std.Build) void {
         .source_file = .{ .path = "src/lib.zig" },
     });
 
+    const uuid = b.dependency("uuid", .{
+        .target = target,
+        .optimize = optimize,
+    });
+
     const lib = b.addSharedLibrary(.{
         .name = "minimd-zig",
         .root_source_file = .{ .path = "src/lib.zig" },
         .target = target,
         .optimize = optimize,
     });
+    lib.addModule("uuid", uuid.module("uuid"));
 
     // zig build test_iter
     const iter_test = b.addTest(.{
@@ -46,6 +52,8 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+    parser_test.addModule("uuid", uuid.module("uuid"));
+
     const run_uint_test3 = b.addRunArtifact(parser_test);
     const parser_step = b.step("test_parse", "test parser");
     parser_step.dependOn(&run_uint_test3.step);

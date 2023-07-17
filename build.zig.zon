@@ -1,0 +1,11 @@
+.{
+    .name = "minimdzig",
+    .version = "0.1.0",
+    .dependencies = .{
+        //
+        .uuid = .{
+            .url = "https://github.com/Chanyon/zig-uuid/archive/33e217c7cc15f0099f4ed074f6caf0a6e55d52c5.tar.gz",
+            .hash = "1220d4506498585cc0c88cd8928d1f94e619a4151072fee3f0f8aa02c9ab07d1c3b5",
+        },
+    },
+}
