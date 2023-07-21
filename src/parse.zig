@@ -202,12 +202,12 @@ pub const Parser = struct {
             self.nextToken();
             try self.parseCode();
         }
-
+        // [
         if (self.cur_token.ty == .TK_LBRACE) {
             self.nextToken();
             try self.parseLink();
         }
-
+        // <
         if (self.curTokenIs(.TK_LT)) {
             self.nextToken();
             try self.parseLinkWithLT();
@@ -251,6 +251,10 @@ pub const Parser = struct {
                     .TK_LBRACE => {
                         self.nextToken();
                         try self.parseLink();
+                    },
+                    .TK_LT => {
+                        self.nextToken();
+                        try self.parseLinkWithLT();
                     },
                     else => {},
                 }
@@ -708,12 +712,26 @@ pub const Parser = struct {
                     self.nextToken();
                 }
             } else {
-                const fmt = try std.fmt.allocPrint(self.allocator, "<a href=\"{s}\">{s}", .{ str, str });
+                const fmt = try std.fmt.allocPrint(self.allocator, "<a href=\"{s}", .{str});
                 try self.out.append(fmt);
-                if (self.peek_token.ty == .TK_GT) {
-                    self.nextToken();
+
+                self.nextToken();
+                if (self.cur_token.ty == .TK_GT) {
+                    try self.out.append("\">");
+                    try self.out.append(str);
                     try self.out.append("</a>");
                 } else {
+                    var a_conetent = std.ArrayList([]const u8).init(self.allocator);
+                    // defer a_conetent.deinit();
+                    while (!self.curTokenIs(.TK_EOF) and !self.curTokenIs(.TK_GT)) {
+                        try self.out.append(self.cur_token.literal);
+                        try a_conetent.append(self.cur_token.literal);
+                        self.nextToken();
+                    }
+
+                    try self.out.append("\">");
+                    try self.out.append(str);
+                    try self.out.appendSlice(a_conetent.items);
                     try self.out.append("</a>");
                 }
             }
@@ -1486,10 +1504,12 @@ test "parser link 2" {
     const al = gpa.allocator();
     defer gpa.deinit();
     const text =
-        \\<https://github.com>
+        \\<https://github\_1.com>
         \\<https://github.com/2>
         \\hello<https://github.com>wooo
         \\
+        \\ref: <https://www.nand2tetris.org/>
+        \\ref: <https://github.com/AllenWrong/nand2tetris>
     ;
     var lexer = Lexer.newLexer(text);
     var parser = Parser.NewParser(&lexer, al);
@@ -1499,7 +1519,7 @@ test "parser link 2" {
     const str = try std.mem.join(al, "", parser.out.items);
     const res = str[0..str.len];
     // std.debug.print("{s} \n", .{res});
-    try std.testing.expect(std.mem.eql(u8, res, "<a href=\"https://github.com\">https://github.com</a><a href=\"https://github.com/2\">https://github.com/2</a><p>hello<a href=\"https://github.com\">https://github.com</a>wooo<br></p>"));
+    try std.testing.expect(std.mem.eql(u8, res, "<a href=\"https://github_1.com\">https://github_1.com</a><a href=\"https://github.com/2\">https://github.com/2</a><p>hello<a href=\"https://github.com\">https://github.com</a>wooo<br></p><p>ref: <a href=\"https://www.nand2tetris.org/\">https://www.nand2tetris.org/</a><br>ref: <a href=\"https://github.com/AllenWrong/nand2tetris\">https://github.com/AllenWrong/nand2tetris</a></p>"));
 }
 
 test "parser image link" {
