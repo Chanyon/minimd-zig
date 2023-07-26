@@ -1,6 +1,6 @@
 const std = @import("std");
 
-pub fn build(b: *std.Build) void {
+pub fn build(b: *std.Build) !void {
     // Standard release options allow the person running `zig build` to select
     // between Debug, ReleaseSafe, ReleaseFast, and ReleaseSmall.
     const target = b.standardTargetOptions(.{});
@@ -8,23 +8,27 @@ pub fn build(b: *std.Build) void {
     const documention = b.option(bool, "docs", "Generate documentation") orelse false;
     const optimize = b.standardOptimizeOption(.{});
 
-    _ = b.addModule("minimdzig", .{
-        //
+    const uuid_module = b.dependency("uuid", .{}).module("uuid");
+    // const md_module = b.addModule("minimdzig", .{
+    //     .source_file = .{ .path = "src/lib.zig" },
+    //     .dependencies = &.{.{ .name = "uuid", .module = uuid_module }},
+    // });
+    // _ = md_module;
+
+    const module = b.createModule(.{
         .source_file = .{ .path = "src/lib.zig" },
+        .dependencies = &.{.{ .name = "uuid", .module = uuid_module }},
     });
 
-    const uuid = b.dependency("uuid", .{
-        .target = target,
-        .optimize = optimize,
-    });
+    try b.modules.put(b.dupe("minimdzig"), module);
 
     const lib = b.addSharedLibrary(.{
-        .name = "minimd-zig",
+        .name = "minimdzig",
         .root_source_file = .{ .path = "src/lib.zig" },
         .target = target,
         .optimize = optimize,
     });
-    lib.addModule("uuid", uuid.module("uuid"));
+    lib.addModule("uuid", uuid_module);
 
     // zig build test_iter
     const iter_test = b.addTest(.{
@@ -52,7 +56,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
-    parser_test.addModule("uuid", uuid.module("uuid"));
+    parser_test.addModule("uuid", uuid_module);
 
     const run_uint_test3 = b.addRunArtifact(parser_test);
     const parser_step = b.step("test_parse", "test parser");
@@ -63,6 +67,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+    main_tests.addModule("uuid", uuid_module);
     const run_uint_test4 = b.addRunArtifact(main_tests);
     const test_step = b.step("test", "Run library tests");
     test_step.dependOn(&run_uint_test4.step);
