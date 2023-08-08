@@ -4,8 +4,6 @@ pub fn build(b: *std.Build) !void {
     // Standard release options allow the person running `zig build` to select
     // between Debug, ReleaseSafe, ReleaseFast, and ReleaseSmall.
     const target = b.standardTargetOptions(.{});
-    //zig build -Ddocs=true
-    const documention = b.option(bool, "docs", "Generate documentation") orelse false;
     const optimize = b.standardOptimizeOption(.{});
 
     const uuid_module = b.dependency("uuid", .{}).module("uuid");
@@ -68,13 +66,19 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
     main_tests.addModule("uuid", uuid_module);
+
     const run_uint_test4 = b.addRunArtifact(main_tests);
     const test_step = b.step("test", "Run library tests");
     test_step.dependOn(&run_uint_test4.step);
     test_step.dependOn(&run_uint_test2.step);
     test_step.dependOn(&run_uint_test3.step);
 
-    if (documention) {
-        lib.emit_docs = .emit;
-    }
+    const install_docs = b.addInstallDirectory(.{
+        .source_dir = lib.getEmittedDocs(),
+        .install_dir = .prefix,
+        .install_subdir = "docs",
+    });
+
+    const docs_step = b.step("docs", "gen docs");
+    docs_step.dependOn(&install_docs.step);
 }
