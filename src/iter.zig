@@ -33,11 +33,11 @@ const LineIterator = struct {
 };
 
 test "iter" {
-  var it = iterateLines("1\n23");
-  const r1 = it.next().?;
-  var it2 = iterateLines("123");
-  const r2 = it2.next().?;
+    var it = iterateLines("1\n23");
+    const r1 = it.next().?;
+    var it2 = iterateLines("123");
+    const r2 = it2.next().?;
 
-  try std.testing.expect(std.mem.eql(u8, r1, "1"));
-  try std.testing.expect(std.mem.eql(u8, r2, "123"));
+    try std.testing.expect(std.mem.eql(u8, r1, "1"));
+    try std.testing.expect(std.mem.eql(u8, r2, "123"));
 }

@@ -56,6 +56,12 @@ pub fn build(b: *std.Build) !void {
     });
     parser_test.addModule("uuid", uuid_module);
 
+    //zig build test_parse (-Dtest | -Dtest=true)
+    const is_test = b.option(bool, "test", "test") orelse false;
+    const build_options = b.addOptions();
+    build_options.addOption(bool, "is_test", is_test);
+    parser_test.addOptions("parse_test", build_options);
+
     const run_uint_test3 = b.addRunArtifact(parser_test);
     const parser_step = b.step("test_parse", "test parser");
     parser_step.dependOn(&run_uint_test3.step);
@@ -66,6 +72,7 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
     main_tests.addModule("uuid", uuid_module);
+    main_tests.addOptions("parse_test", build_options);
 
     const run_uint_test4 = b.addRunArtifact(main_tests);
     const test_step = b.step("test", "Run library tests");

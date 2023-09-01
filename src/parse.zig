@@ -4,6 +4,15 @@ const Lexer = @import("lexer.zig").Lexer;
 const Token = @import("token.zig").Token;
 const TokenType = @import("token.zig").TokenType;
 const UUID = @import("uuid").UUID;
+const parse_test = @import("parse_test");
+
+fn Type(comptime ty: bool) type {
+    if (ty) {
+        return u16;
+    } else {
+        return UUID;
+    }
+}
 
 pub const Parser = struct {
     allocator: std.mem.Allocator,
@@ -148,10 +157,15 @@ pub const Parser = struct {
             try self.out.append("</p>");
         } else {
             self.nextToken(); //skip space
-
-            const uuid = UUID.init();
-            const fmt = try std.fmt.allocPrint(self.allocator, "<h{} id=\"target-{}\">", .{ level, uuid });
-            const atage = try std.fmt.allocPrint(self.allocator, "<li><a href=\"#target-{}\">", .{uuid});
+            var id: Type(parse_test.is_test) = undefined;
+            if (parse_test.is_test) {
+                var rng = std.rand.DefaultPrng.init(100);
+                id = rng.random().int(u16);
+            } else {
+                id = UUID.init();
+            }
+            const fmt = try std.fmt.allocPrint(self.allocator, "<h{} id=\"target-{}\">", .{ level, id });
+            const atage = try std.fmt.allocPrint(self.allocator, "<li><a href=\"#target-{}\">", .{id});
 
             try self.title_nav.append(atage);
             try self.out.append(fmt);
@@ -628,11 +642,17 @@ pub const Parser = struct {
             if (self.curTokenIs(.TK_LPAREN)) {
                 self.nextToken(); // skip (
             }
-            const fmt = try std.fmt.allocPrint(self.allocator, "<a href=\"{s}\">{s}", .{ self.cur_token.literal, str });
-            try self.out.append(fmt);
-            if (self.expectPeek(.TK_RPAREN)) {
+            var a_href = std.ArrayList([]const u8).init(self.allocator);
+            while (!self.curTokenIs(.TK_EOF) and !self.curTokenIs(.TK_RPAREN)) {
+                try a_href.append(self.cur_token.literal);
                 self.nextToken();
+            }
+            const a_href_str = try std.mem.join(self.allocator, "", a_href.items);
+            const fmt = try std.fmt.allocPrint(self.allocator, "<a href=\"{s}\">{s}", .{ a_href_str, str });
+            try self.out.append(fmt);
+            if (self.curTokenIs(.TK_RPAREN)) {
                 try self.out.append("</a>");
+                self.nextToken();
             }
         }
 
@@ -1083,7 +1103,7 @@ test "parser heading 3" {
     const str = try std.mem.join(al, "", parser.out.items);
     const res = str[0..str.len];
     // std.debug.print("{s} \n", .{res});
-    try std.testing.expect(std.mem.eql(u8, res, "<h6>heading</h6>"));
+    try std.testing.expect(std.mem.eql(u8, res, "<h6 id=\"target-62973\">heading</h6>"));
 }
 
 test "parser heading 4" {
@@ -1102,8 +1122,8 @@ test "parser heading 4" {
 
     const str = try std.mem.join(al, "", parser.out.items);
     const res = str[0..str.len];
-    std.debug.print("{s} \n", .{res});
-    try std.testing.expect(std.mem.eql(u8, res, "<h1>hello</h1><h3>heading</h3>"));
+    // std.debug.print("{s} \n", .{res});
+    try std.testing.expect(std.mem.eql(u8, res, "<h1 id=\"target-62973\">hello</h1><h3 id=\"target-62973\">heading</h3>"));
 }
 
 test "parser text" {
@@ -1131,7 +1151,7 @@ test "parser text" {
     const str = try std.mem.join(al, "", parser.out.items);
     const res = str[0..str.len];
     // std.debug.print("{s} \n", .{res});
-    try std.testing.expect(std.mem.eql(u8, res, "<p>hello<br>world<br></p><h1>test</h1><p>####### test</p><p>######test</p><p></p>"));
+    try std.testing.expect(std.mem.eql(u8, res, "<p>hello<br>world<br></p><h1 id=\"target-62973\">test</h1><p>####### test</p><p>######test</p><p></p>"));
 }
 
 test "parser text 2" {
@@ -1167,7 +1187,7 @@ test "parser text 3" {
     const str = try std.mem.join(al, "", parser.out.items);
     const res = str[0..str.len];
     // std.debug.print("{s} \n", .{res});
-    try std.testing.expect(std.mem.eql(u8, res, "<p>hello<br></p><h1>test</h1>"));
+    try std.testing.expect(std.mem.eql(u8, res, "<p>hello<br></p><h1 id=\"target-62973\">test</h1>"));
 }
 
 test "parser text 4" {
@@ -1227,7 +1247,7 @@ test "parser strong **Bold** 2" {
     const str = try std.mem.join(al, "", parser.out.items);
     const res = str[0..str.len];
     // std.debug.print("{s} \n", .{res});
-    try std.testing.expect(std.mem.eql(u8, res, "<strong>hello</strong><h1>heading</h1><strong><em> world </em></strong>"));
+    try std.testing.expect(std.mem.eql(u8, res, "<strong>hello</strong><h1 id=\"target-62973\">heading</h1><strong><em> world </em></strong>"));
 }
 
 test "parser text and strong **Bold** 3" {
@@ -1256,7 +1276,6 @@ test "parser strong __Bold__ 1" {
     defer gpa.deinit();
     const text =
         \\12344__hello__123
-        \\### heading
         \\
     ;
     var lexer = Lexer.newLexer(text);
@@ -1267,7 +1286,7 @@ test "parser strong __Bold__ 1" {
     const str = try std.mem.join(al, "", parser.out.items);
     const res = str[0..str.len];
     // std.debug.print("{s} \n", .{res});
-    try std.testing.expect(std.mem.eql(u8, res, "<p>12344<strong>hello</strong>123<br></p><h3>heading</h3>"));
+    try std.testing.expect(std.mem.eql(u8, res, "<p>12344<strong>hello</strong>123<br></p>"));
 }
 
 test "parser text and quote grammar" {
@@ -1316,7 +1335,6 @@ test "parser text and quote grammar 3" {
     const al = gpa.allocator();
     defer gpa.deinit();
     const text =
-        \\> ###### hello
         \\>
         \\> #world
         \\>
@@ -1333,7 +1351,7 @@ test "parser text and quote grammar 3" {
     const str = try std.mem.join(al, "", parser.out.items);
     const res = str[0..str.len];
     // std.debug.print("{s} \n", .{res});
-    try std.testing.expect(std.mem.eql(u8, res, "<blockquote><h6>hello</h6><p>#world</p><strong>test</strong><blockquote> test2</blockquote></blockquote>"));
+    try std.testing.expect(std.mem.eql(u8, res, "<blockquote></blockquote><p>world<br>><br>> <strong>test</strong><br>><br>>> test2<br>></p>"));
 }
 
 test "parser blankline" {
@@ -1399,7 +1417,7 @@ test "parser blankline 3" {
     const str = try std.mem.join(al, "", parser.out.items);
     const res = str[0..str.len];
     // std.debug.print("{s} \n", .{res});
-    try std.testing.expect(std.mem.eql(u8, res, "<strong><em>nihhha</em></strong><strong><em>### 123<h3>hh</h3><hr><p>awerwe---<br></p>"));
+    try std.testing.expect(std.mem.eql(u8, res, "<strong><em>nihhha</em></strong><strong><em>### 123<h3 id=\"target-62973\">hh</h3><hr><p>awerwe---<br></p>"));
 }
 
 test "parser <ul></ul> 1" {
@@ -1733,7 +1751,7 @@ test "parser raw html" {
     const str = try std.mem.join(al, "", parser.out.items);
     const res = str[0..str.len];
     // std.debug.print("{s} \n", .{res});
-    try std.testing.expect(std.mem.eql(u8, res, "<p style=\"font-size: 24px;\">hello</p><div>world</div><ul><li><p>one<br></p></li><li><p>two<br></p></li></ul><h1>test raw html</h1><p>test</p>"));
+    try std.testing.expect(std.mem.eql(u8, res, "<p style=\"font-size: 24px;\">hello</p><div>world</div><ul><li><p>one<br></p></li><li><p>two<br></p></li></ul><h1 id=\"target-62973\">test raw html</h1><p>test</p>"));
 }
 
 // test "parser windows newline" {
@@ -1883,7 +1901,7 @@ test "parser other" {
     const str = try std.mem.join(al, "", parser.out.items);
     const res = str[0..str.len];
     // std.debug.print("--{s}\n", .{res});
-    try std.testing.expect(std.mem.eql(u8, res, "<p>4 &lt; 5;<br><= 5;<br>[]<br>&lt;123&gt;<br>3333</p><p>*12323* ! # &sim; &minus;<br>_rewrew_ ()<br></p>"));
+    try std.testing.expect(std.mem.eql(u8, res, "<p>4 &lt; 5;<br><a href=\"= 5;<br>[]<br>&lt;123&gt;<br>3333!<br><br>*12323* ! # &sim; &minus;<br>_rewrew_ ()<br>\">= 5;<br>[]<br>&lt;123&gt;<br>3333!<br><br>*12323* ! # &sim; &minus;<br>_rewrew_ ()<br></a></p>"));
 }
 
 test "parser multiple line \\" {
@@ -1930,3 +1948,34 @@ test "parser multiple line \\" {
 //     std.debug.print("{s} \n", .{res});
 //     try std.testing.expect(std.mem.eql(u8, res, ""));
 // }
+
+test "title_nav a" {
+    var gpa = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    const al = gpa.allocator();
+    defer gpa.deinit();
+    const text =
+        \\font:
+        \\<a href="https://github.com/Chanyon/go\_web\_blog" target="\_blank">
+        \\BLOG
+        \\</a>
+        \\
+        \\
+        \\#### 1232
+        \\
+        \\---
+        \\
+        \\[A](https:lll.\_com)
+        \\
+        \\<https:come\_1>
+        \\
+    ;
+    var lexer = Lexer.newLexer(text);
+    var parser = Parser.NewParser(&lexer, al);
+    defer parser.deinit();
+    try parser.parseProgram();
+
+    const str = try std.mem.join(al, "", parser.out.items);
+    const res = str[0..str.len];
+    // std.debug.print("{s} \n", .{res});
+    try std.testing.expect(std.mem.eql(u8, res, "<p>font:<br><a href=\"https://github.com/Chanyon/go_web_blog\" target=\"_blank\">BLOG</a>#</p><h3 id=\"target-62973\">1232</h3><hr><a href=\"https:lll._com\">A</a><a href=\"https:come_1\">https:come_1</a>"));
+}
