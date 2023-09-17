@@ -22,7 +22,7 @@ pub const Parser = struct {
     peek_token: Token,
     out: std.ArrayList([]const u8),
     unordered_list: std.ArrayList(Unordered),
-    table_list: std.ArrayList(Token),
+    table_list: std.ArrayList(std.ArrayList(Token)),
     table_context: TableContext,
     footnote_list: std.ArrayList(Footnote),
     is_parse_text: bool = false,
@@ -49,7 +49,7 @@ pub const Parser = struct {
     pub fn NewParser(lex: *Lexer, al: std.mem.Allocator) Parser {
         const list = std.ArrayList([]const u8).init(al);
         const unordered = std.ArrayList(Unordered).init(al);
-        const table_list = std.ArrayList(Token).init(al);
+        const table_list = std.ArrayList(std.ArrayList(Token)).init(al);
         const align_style = std.ArrayList(Align).init(al);
         const footnote_list = std.ArrayList(Footnote).init(al);
         const title_nav = std.ArrayList([]const u8).init(al);
@@ -916,9 +916,15 @@ pub const Parser = struct {
                 }
             }
 
+            //table text
             if (self.curTokenIs(.TK_STR)) {
-                try self.table_list.append(self.cur_token);
-                self.nextToken();
+                var list = std.ArrayList(Token).init(self.allocator);
+                while (self.curTokenIs(.TK_STR)) {
+                    try list.append(self.cur_token);
+                    self.nextToken();
+                }
+                try self.table_list.append(list);
+                list.clearRetainingCapacity();
             }
 
             if (!self.table_context.cols_done and self.curTokenIs(.TK_VERTICAL)) {
@@ -941,7 +947,7 @@ pub const Parser = struct {
         }
 
         var idx: usize = 0;
-        const len = self.table_list.items.len - 1;
+        const len = self.table_list.items.len;
         const algin_len = self.table_context.align_style.items.len;
         try self.out.append("<table><thead>");
 
@@ -961,7 +967,9 @@ pub const Parser = struct {
                     },
                 }
             }
-            try self.out.append(trimRight(u8, self.table_list.items[idx].literal, " "));
+            for (self.table_list.items[idx].items) |value| {
+                try self.out.append(trimRight(u8, value.literal, " "));
+            }
             try self.out.append("</th>");
         }
 
@@ -992,7 +1000,9 @@ pub const Parser = struct {
                         },
                     }
                 }
-                try self.out.append(trimRight(u8, self.table_list.items[k].literal, " "));
+                for (self.table_list.items[k].items) |value| {
+                    try self.out.append(trimRight(u8, value.literal, " "));
+                }
                 try self.out.append("</td>");
             }
             try self.out.append("</tr>");
@@ -1776,15 +1786,15 @@ test "parser table" {
     const al = gpa.allocator();
     defer gpa.deinit();
     const text =
-        \\| Syntax      | Description | Test |
+        \\| Syntaxo\_one | Description\_two | Test\_three |
         \\| :----------- | --------: |  :-----: |
-        \\| Header      | Title      |  will |
-        \\| Paragraph   | Text       |  why  |
+        \\| Header one | Title two |  will three |
+        \\| Paragraph one  | Text two |  why  three |
         \\
         \\---
-        // \\| Syntax      | Description |
-        // \\| ----------- | ----------- |
-        // \\| Header      | Title       |
+        \\| Syntax      | Description |
+        \\| ----------- | ----------- |
+        \\| Header      | Title       |
     ;
 
     var lexer = Lexer.newLexer(text);
@@ -1795,7 +1805,7 @@ test "parser table" {
     const str = try std.mem.join(al, "", parser.out.items);
     const res = str[0..str.len];
     // std.debug.print("{s}\n", .{res});
-    try std.testing.expect(std.mem.eql(u8, res, "<table><thead><th style=\"text-align:left\">Syntax</th><th style=\"text-align:right\">Description</th><th style=\"text-align:center\">Test</th></thead><tbody><tr><td style=\"text-align:left\">Header</td><td style=\"text-align:right\">Title</td><td style=\"text-align:center\">will</td></tr><tr><td style=\"text-align:left\">Paragraph</td><td style=\"text-align:right\">Text</td><td style=\"text-align:center\">why</td></tr></tbody></table><hr>"));
+    try std.testing.expect(std.mem.eql(u8, res, "<table><thead><th style=\"text-align:left\">Syntaxo_one</th><th style=\"text-align:right\">Description_two</th><th style=\"text-align:center\">Test_three</th></thead><tbody><tr><td style=\"text-align:left\">Header one</td><td style=\"text-align:right\">Title two</td><td style=\"text-align:center\">will three</td></tr><tr><td style=\"text-align:left\">Paragraph one</td><td style=\"text-align:right\">Text two</td><td style=\"text-align:center\">why  three</td></tr></tbody></table><hr><table><thead><th>Syntax</th><th>Description</th></thead><tbody><tr><td>Header</td><td>Title</td></tr></tbody></table>"));
 }
 
 test "parser task list" {
