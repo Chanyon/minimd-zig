@@ -4,7 +4,9 @@ const Lexer = @import("lexer.zig").Lexer;
 const Token = @import("token.zig").Token;
 const TokenType = @import("token.zig").TokenType;
 const UUID = @import("uuid").UUID;
-const parse_test = @import("parse_test");
+
+//use test parser
+const parseTest = struct { is_test: bool = false };
 
 fn Type(comptime ty: bool) type {
     if (ty) {
@@ -157,6 +159,7 @@ pub const Parser = struct {
             try self.out.append("</p>");
         } else {
             self.nextToken(); //skip space
+            const parse_test = parseTest{};
             var id: Type(parse_test.is_test) = undefined;
             if (parse_test.is_test) {
                 var rng = std.rand.DefaultPrng.init(100);
