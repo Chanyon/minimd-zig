@@ -7,5 +7,9 @@
             .url = "https://github.com/Chanyon/zig-uuid/archive/33e217c7cc15f0099f4ed074f6caf0a6e55d52c5.tar.gz",
             .hash = "1220d4506498585cc0c88cd8928d1f94e619a4151072fee3f0f8aa02c9ab07d1c3b5",
         },
+        .string = .{
+            .url = "https://github.com/JakubSzark/zig-string/archive/7af16e2b6d43ef2af0a6a3a04351fd2e84f3376f.tar.gz",
+            .hash = "12208d4461a2e24abd4c2875b6761defe5cd0ab0addc3e77668110a17e9349b207fd",
+        },
     },
 }

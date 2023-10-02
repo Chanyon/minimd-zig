@@ -12,10 +12,15 @@ pub fn build(b: *std.Build) !void {
     //     .dependencies = &.{.{ .name = "uuid", .module = uuid_module }},
     // });
     // _ = md_module;
+    const zig_string = b.dependency("string", .{}).module("string");
 
     const module = b.createModule(.{
         .source_file = .{ .path = "src/lib.zig" },
-        .dependencies = &.{.{ .name = "uuid", .module = uuid_module }},
+        .dependencies = &.{
+            //
+            .{ .name = "uuid", .module = uuid_module },
+            .{ .name = "string", .module = zig_string },
+        },
     });
 
     try b.modules.put(b.dupe("minimdzig"), module);
@@ -27,6 +32,7 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
     lib.addModule("uuid", uuid_module);
+    lib.addModule("string", zig_string);
 
     // zig build test_iter
     const iter_test = b.addTest(.{
@@ -59,6 +65,27 @@ pub fn build(b: *std.Build) !void {
     const run_uint_test3 = b.addRunArtifact(parser_test);
     const parser_step = b.step("test_parse", "test parser");
     parser_step.dependOn(&run_uint_test3.step);
+
+    const ast_test = b.addTest(.{
+        .root_source_file = .{ .path = "src/ast.zig" },
+        .target = target,
+        .optimize = optimize,
+    });
+    ast_test.addModule("string", zig_string);
+    const ast_unit_test = b.addRunArtifact(ast_test);
+    const ast_test_step = b.step("ast", "test ast");
+    ast_test_step.dependOn(&ast_unit_test.step);
+
+    const parse2_test = b.addTest(.{
+        .root_source_file = .{ .path = "src/parse2.zig" },
+        .target = target,
+        .optimize = optimize,
+    });
+    parse2_test.addModule("string", zig_string);
+
+    const parse2_uint_test = b.addRunArtifact(parse2_test);
+    const parse2_test_step = b.step("parse2", "test parse2");
+    parse2_test_step.dependOn(&parse2_uint_test.step);
 
     const main_tests = b.addTest(.{
         .root_source_file = .{ .path = "src/lib.zig" },
