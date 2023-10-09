@@ -1,8 +1,20 @@
 const std = @import("std");
 const String = @import("string").String;
 const ArrayList = std.ArrayList;
+const mem = std.mem;
 
-const asttype = enum { text, heading, blank_line, strong, strikethrough };
+const asttype = enum {
+    //zig fmt off
+    text,
+    heading,
+    blank_line,
+    strong,
+    strikethrough,
+    task_list,
+    link,
+    paragraph,
+    code,
+};
 
 pub const Ast = union(asttype) {
     text: Text,
@@ -10,6 +22,10 @@ pub const Ast = union(asttype) {
     blank_line: BlankLine,
     strong: Strong,
     strikethrough: Strikethrough,
+    task_list: TaskList,
+    link: Link,
+    paragraph: Paragraph,
+    code: Code,
     pub fn string(self: *@This()) []const u8 {
         return switch (self.*) {
             inline else => |*s| s.string(),
@@ -167,6 +183,126 @@ pub const Strikethrough = struct {
         self.str.concat("<s>") catch return "";
         self.str.concat(self.value.string()) catch return "";
         self.str.concat("</s>") catch return "";
+        return self.str.str();
+    }
+    pub fn deinit(self: *Self) void {
+        self.value.deinit();
+        self.str.deinit();
+    }
+};
+
+pub const TaskList = struct {
+    tasks: ArrayList(List),
+    str: String,
+
+    pub const List = struct {
+        task_is_done: bool,
+        des: *Ast = undefined, //任务描述
+
+        pub fn init() List {
+            return .{ .task_is_done = false };
+        }
+
+        pub fn string(list: *List) []const u8 {
+            return list.des.string();
+        }
+        pub fn deinit(list: *List) void {
+            list.des.deinit();
+        }
+    };
+
+    const Self = @This();
+
+    pub fn init(allocator: mem.Allocator) TaskList {
+        return .{ .tasks = ArrayList(List).init(allocator), .str = String.init(allocator) };
+    }
+
+    pub fn string(self: *Self) []const u8 {
+        self.str.concat("<div>") catch return "";
+        for (self.tasks.items) |*task| {
+            if (task.task_is_done) {
+                self.str.concat("<input type=\"checkout\" checked>") catch return "";
+            } else {
+                self.str.concat("<input type=\"checkout\">") catch return "";
+            }
+            self.str.concat(task.string()) catch return "";
+            self.str.concat("</input>") catch return "";
+        }
+        self.str.concat("</div>") catch return "";
+        return self.str.str();
+    }
+
+    pub fn deinit(self: *Self) void {
+        for (self.tasks.items) |*list| {
+            list.deinit();
+        }
+        self.str.deinit();
+    }
+};
+
+pub const Link = struct {
+    herf: *Ast = undefined, //text
+    link_des: *Ast = undefined,
+    str: String,
+    const Self = @This();
+    pub fn init(allocator: mem.Allocator) Link {
+        return .{ .str = String.init(allocator) };
+    }
+
+    pub fn string(self: *Self) []const u8 {
+        self.str.concat("<a herf=\"") catch return "";
+        self.str.concat(self.herf.string()) catch return "";
+        self.str.concat("\">") catch return "";
+        self.str.concat(self.link_des.string()) catch return "";
+        self.str.concat("</a>") catch return "";
+        return self.str.str();
+    }
+    pub fn deinit(self: *Self) void {
+        self.herf.deinit();
+        self.link_des.deinit();
+        self.str.deinit();
+    }
+};
+
+pub const Paragraph = struct {
+    stmts: ArrayList(Ast),
+    str: String,
+
+    const Self = @This();
+
+    pub fn init(allocator: mem.Allocator) Paragraph {
+        return .{ .stmts = ArrayList(Ast).init(allocator), .str = String.init(allocator) };
+    }
+
+    pub fn string(self: *Self) []const u8 {
+        self.str.concat("<p>") catch return "";
+        for (self.stmts.items) |*node| {
+            self.str.concat(node.string()) catch return "";
+        }
+        self.str.concat("</p>") catch return "";
+        return self.str.str();
+    }
+
+    pub fn deinit(self: *Self) void {
+        for (self.stmts.items) |*node| {
+            node.deinit();
+        }
+        self.stmts.deinit();
+        self.str.deinit();
+    }
+};
+
+pub const Code = struct {
+    value: *Ast = undefined,
+    str: String,
+    const Self = @This();
+    pub fn init(allocator: std.mem.Allocator) Code {
+        return .{ .str = String.init(allocator) };
+    }
+    pub fn string(self: *Self) []const u8 {
+        self.str.concat("<code>") catch return "";
+        self.str.concat(self.value.string()) catch return "";
+        self.str.concat("</code>") catch return "";
         return self.str.str();
     }
     pub fn deinit(self: *Self) void {

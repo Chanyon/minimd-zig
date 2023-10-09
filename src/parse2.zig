@@ -41,7 +41,9 @@ fn parseStatement(self: *Parser) !Ast {
         .TK_MINUS => try self.parseBlankLine(),
         .TK_ASTERISKS => try self.parseStrong(),
         .TK_STRIKETHROUGH => self.parseStrikethrough(),
-        else => unreachable,
+        .TK_LBRACE => try self.parseLink(),
+        .TK_CODE => try self.parseCode(),
+        else => try self.parseParagraph(),
     };
 
     return t;
@@ -53,9 +55,10 @@ fn parseText(self: *Parser) !Ast {
         try text.value.concat(self.cur_token.literal);
         self.nextToken();
     }
-    // if (self.curTokenIs(.TK_BR)) {
-    //     self.nextToken();
-    // }
+    if (self.curTokenIs(.TK_BR)) {
+        try text.value.concat(self.cur_token.literal);
+        self.nextToken();
+    }
 
     return .{ .text = text };
 }
@@ -91,7 +94,50 @@ fn parseBlankLine(self: *Parser) !Ast {
         }
         return .{ .blank_line = blank_line };
     }
+
+    if (blank_line.level == 1) {
+        if (self.curTokenIs(.TK_SPACE) and self.peek_token.ty == .TK_LBRACE) {
+            self.nextToken(); //skip space
+            self.nextToken(); //skip [
+            var task = TaskList.init(self.allocator);
+            var list = try self.parseTaskList();
+            try task.tasks.append(list);
+            while (self.curTokenIs(.TK_MINUS)) {
+                self.nextToken();
+                if (self.curTokenIs(.TK_SPACE) and self.peek_token.ty == .TK_LBRACE) {
+                    self.nextToken(); //skip space
+                    self.nextToken(); //skip [
+                    list = try self.parseTaskList();
+                    try task.tasks.append(list);
+                }
+            }
+            return .{ .task_list = task };
+        } else {
+            // return .{ .blank_line = blank_line };
+        }
+    }
     return .{ .blank_line = blank_line };
+}
+
+fn parseTaskList(self: *Parser) !TaskList.List {
+    var list = TaskList.List.init();
+    if (self.curTokenIs(.TK_SPACE)) {
+        list.task_is_done = false;
+        self.nextToken();
+    }
+    if (std.mem.eql(u8, self.cur_token.literal, "x")) {
+        list.task_is_done = true;
+        self.nextToken();
+    }
+    if (self.curTokenIs(.TK_RBRACE)) {
+        self.nextToken();
+        var des = try self.allocator.create(Ast);
+        des.* = try self.parseText();
+        list.des = des;
+        return list;
+    } else {
+        return error.TaskListError;
+    }
 }
 
 // ***string***
@@ -141,8 +187,97 @@ fn parseStrikethrough(self: *Parser) !Ast {
     return .{ .strikethrough = stri };
 }
 
-pub fn curTokenIs(self: *Parser, tok: TokenType) bool {
+fn parseParagraph(self: *Parser) !Ast {
+    var paragraph = Paragrah.init(self.allocator);
+    // \n skip
+    while (self.curTokenIs(.TK_BR)) {
+        self.nextToken();
+    }
+
+    while (!self.curTokenIs(.TK_EOF) and !self.peekOtherTokenIs(self.cur_token.ty)) {
+        switch (self.cur_token.ty) {
+            .TK_STR => {
+                var text = try self.parseText();
+                try paragraph.stmts.append(text);
+            },
+            .TK_STRIKETHROUGH => {
+                var s = try self.parseStrikethrough();
+                try paragraph.stmts.append(s);
+            },
+            .TK_LBRACE => {
+                var link = try self.parseLink();
+                try paragraph.stmts.append(link);
+            },
+            .TK_CODE => {
+                var code = try self.parseCode();
+                try paragraph.stmts.append(code);
+            },
+            else => {
+                self.nextToken();
+            },
+        }
+    }
+
+    return .{ .paragraph = paragraph };
+}
+
+fn parseCode(self: *Parser) !Ast {
+    var code = Code.init(self.allocator);
+    self.nextToken();
+
+    if (self.curTokenIs(.TK_STR)) {
+        var text = try self.allocator.create(Ast);
+        text.* = try self.parseText();
+        code.value = text;
+    } else {
+        return error.CodeSyntaxError;
+    }
+    //skip `
+    self.nextToken();
+    return .{ .code = code };
+}
+
+fn parseLink(self: *Parser) !Ast {
+    //skip `[`
+    self.nextToken();
+    var link = Link.init(self.allocator);
+    if (self.curTokenIs(.TK_STR)) {
+        var d = try self.allocator.create(Ast);
+        d.* = try self.parseText();
+        link.link_des = d;
+    } else {
+        return error.LinkSyntaxError;
+    }
+    //skip `]`
+    self.nextToken();
+    if (self.curTokenIs(.TK_LPAREN)) {
+        self.nextToken();
+        var h = try self.allocator.create(Ast);
+        h.* = try self.parseText();
+        link.herf = h;
+    } else {
+        return error.LinkSyntaxError;
+    }
+    //skip `)`
+    self.nextToken();
+
+    return .{ .link = link };
+}
+
+fn curTokenIs(self: *Parser, tok: TokenType) bool {
     return tok == self.cur_token.ty;
+}
+
+fn peekOtherTokenIs(self: *Parser, tok: TokenType) bool {
+    _ = self;
+    const tokens = [_]TokenType{ .TK_MINUS, .TK_PLUS, .TK_BANG, .TK_VERTICAL, .TK_WELLNAME, .TK_NUM_DOT, .TK_CODEBLOCK };
+
+    for (tokens) |v| {
+        if (v == tok) {
+            return true;
+        }
+    }
+    return false;
 }
 
 test Parser {
@@ -159,6 +294,10 @@ test Parser {
         .{ .input = "***hi***", .expect = "<strong><em>hi</em></strong>" },
         .{ .input = "~~hi~~", .expect = "<s>hi</s>" },
         .{ .input = "~~hi~~---", .expect = "<s>hi</s><hr/>" },
+        .{ .input = "- [x] todo list\n- [ ] list2\n- [x] list3\n", .expect = "<div><input type=\"checkout\" checked> todo list<br></input><input type=\"checkout\"> list2<br></input><input type=\"checkout\" checked> list3<br></input></div>" },
+        .{ .input = "[hi](https://github.com/)", .expect = "<a herf=\"https://github.com/\">hi</a>" },
+        .{ .input = "\ntext page\\_allocator\n~~nihao~~[link](link)`code`", .expect = "<p>text page_allocator<br><s>nihao</s><a herf=\"link\">link</a><code>code</code></p>" },
+        .{ .input = "`call{}`", .expect = "<code>call{}</code>" },
     };
     inline for (tests, 0..) |item, i| {
         var lexer = Lexer.newLexer(item.input);
@@ -196,3 +335,7 @@ const Heading = ast.Heading;
 const BlankLine = ast.BlankLine;
 const Strong = ast.Strong;
 const Strikethrough = ast.Strikethrough;
+const TaskList = ast.TaskList;
+const Link = ast.Link;
+const Paragrah = ast.Paragraph;
+const Code = ast.Code;
