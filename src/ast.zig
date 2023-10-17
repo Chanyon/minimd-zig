@@ -14,6 +14,8 @@ const asttype = enum {
     link,
     paragraph,
     code,
+    codeblock,
+    images,
 };
 
 pub const Ast = union(asttype) {
@@ -26,6 +28,8 @@ pub const Ast = union(asttype) {
     link: Link,
     paragraph: Paragraph,
     code: Code,
+    images: Images,
+    codeblock: CodeBlock,
     pub fn string(self: *@This()) []const u8 {
         return switch (self.*) {
             inline else => |*s| s.string(),
@@ -307,6 +311,52 @@ pub const Code = struct {
     }
     pub fn deinit(self: *Self) void {
         self.value.deinit();
+        self.str.deinit();
+    }
+};
+
+pub const CodeBlock = struct {
+    value: *Ast = undefined,
+    str: String,
+    const Self = @This();
+    pub fn init(allocator: std.mem.Allocator) CodeBlock {
+        return .{ .str = String.init(allocator) };
+    }
+    pub fn string(self: *Self) []const u8 {
+        self.str.concat("<pre><code>") catch return "";
+        self.str.concat(self.value.string()) catch return "";
+        self.str.concat("</code></pre>") catch return "";
+        return self.str.str();
+    }
+    pub fn deinit(self: *Self) void {
+        self.value.deinit();
+        self.str.deinit();
+    }
+};
+
+pub const Images = struct {
+    src: *Ast = undefined, //text
+    alt: *Ast = undefined,
+    str: String,
+    title: []const u8 = "",
+    const Self = @This();
+    pub fn init(allocator: mem.Allocator) Images {
+        return .{ .str = String.init(allocator) };
+    }
+
+    pub fn string(self: *Self) []const u8 {
+        self.str.concat("<img src=\"") catch return "";
+        self.str.concat(self.src.string()) catch return "";
+        self.str.concat("\" alt=\"") catch return "";
+        self.str.concat(self.alt.string()) catch return "";
+        self.str.concat("\" title=\"") catch return "";
+        self.str.concat(self.title) catch return "";
+        self.str.concat("\"/>") catch return "";
+        return self.str.str();
+    }
+    pub fn deinit(self: *Self) void {
+        self.src.deinit();
+        self.alt.deinit();
         self.str.deinit();
     }
 };
