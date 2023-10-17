@@ -170,7 +170,7 @@ pub const Lexer = struct {
     }
 
     fn keyWord(ch: []const u8) bool {
-        const keys = [_][]const u8{ "\n", "\\", "*", "]", ")", ">", "~", "`", "_", "|", "[", "<" };
+        const keys = [_][]const u8{ "\n", "\\", "*", "]", ")", ">", "~", "`", "_", "|", "[", "<", "!" };
         for (keys) |key| {
             if (eql(u8, ch, key)) {
                 return true;
@@ -180,7 +180,7 @@ pub const Lexer = struct {
     }
 
     fn escapeCharacter(ch: []const u8) bool {
-        const keys = [_][]const u8{ "*", "_", "[", "]", "(", ")", "#", "-", "!", "|", "<", ">", "^", "~" };
+        const keys = [_][]const u8{ "*", "_", "[", "]", "(", ")", "#", "-", "!", "|", "<", ">", "^", "~", "!" };
         for (keys) |key| {
             if (eql(u8, ch, key)) {
                 return true;
