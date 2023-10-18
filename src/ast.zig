@@ -16,6 +16,7 @@ const asttype = enum {
     code,
     codeblock,
     images,
+    imagelink,
 };
 
 pub const Ast = union(asttype) {
@@ -30,6 +31,7 @@ pub const Ast = union(asttype) {
     code: Code,
     images: Images,
     codeblock: CodeBlock,
+    imagelink: ImageLink,
     pub fn string(self: *@This()) []const u8 {
         return switch (self.*) {
             inline else => |*s| s.string(),
@@ -225,9 +227,9 @@ pub const TaskList = struct {
         self.str.concat("<div>") catch return "";
         for (self.tasks.items) |*task| {
             if (task.task_is_done) {
-                self.str.concat("<input type=\"checkout\" checked>") catch return "";
+                self.str.concat("<input type=\"checkbox\" checked>") catch return "";
             } else {
-                self.str.concat("<input type=\"checkout\">") catch return "";
+                self.str.concat("<input type=\"checkbox\">") catch return "";
             }
             self.str.concat(task.string()) catch return "";
             self.str.concat("</input>") catch return "";
@@ -268,6 +270,37 @@ pub const Link = struct {
     }
 };
 
+// [![image](/assets/img/ship.jpg)](https://github.com/Chanyon)
+// <a href="https://github.com/Chanyon"><img src="/assets/img/ship.jpg" alt="image"></a>"
+pub const ImageLink = struct {
+    herf: *Ast = undefined, //a href
+    src: *Ast = undefined, // img src
+    alt: *Ast = undefined,
+    str: String,
+    const Self = @This();
+    pub fn init(allocator: mem.Allocator) ImageLink {
+        return .{ .str = String.init(allocator) };
+    }
+
+    pub fn string(self: *Self) []const u8 {
+        self.str.concat("<a herf=\"") catch return "";
+        self.str.concat(self.herf.string()) catch return "";
+        self.str.concat("\"><img src=\"") catch return "";
+        //<img src=""/>
+        self.str.concat(self.src.string()) catch return "";
+        self.str.concat("\" alt=\"") catch return "";
+        self.str.concat(self.alt.string()) catch return "";
+        self.str.concat("\"/></a>") catch return "";
+        return self.str.str();
+    }
+    pub fn deinit(self: *Self) void {
+        self.herf.deinit();
+        self.src.deinit();
+        self.alt.deinit();
+        self.str.deinit();
+    }
+};
+
 pub const Paragraph = struct {
     stmts: ArrayList(Ast),
     str: String,
@@ -283,7 +316,7 @@ pub const Paragraph = struct {
         for (self.stmts.items) |*node| {
             self.str.concat(node.string()) catch return "";
         }
-        self.str.concat("</p>") catch return "";
+        self.str.concat("</p><br/>") catch return "";
         return self.str.str();
     }
 
@@ -318,12 +351,19 @@ pub const Code = struct {
 pub const CodeBlock = struct {
     value: *Ast = undefined,
     str: String,
+    lang: []const u8 = "",
+    allocator: mem.Allocator,
     const Self = @This();
     pub fn init(allocator: std.mem.Allocator) CodeBlock {
-        return .{ .str = String.init(allocator) };
+        return .{ .str = String.init(allocator), .allocator = allocator };
     }
     pub fn string(self: *Self) []const u8 {
-        self.str.concat("<pre><code>") catch return "";
+        if (self.lang.len > 0) {
+            const fmt_text = std.fmt.allocPrint(self.allocator, "<pre><code class=\"language-{s}\">", .{self.lang}) catch return "";
+            self.str.concat(fmt_text) catch return "";
+        } else {
+            self.str.concat("<pre><code>") catch return "";
+        }
         self.str.concat(self.value.string()) catch return "";
         self.str.concat("</code></pre>") catch return "";
         return self.str.str();

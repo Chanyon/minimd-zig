@@ -52,7 +52,7 @@ fn parseText(self: *Parser) !Ast {
         self.nextToken();
     }
     if (self.curTokenIs(.TK_BR)) {
-        try text.value.concat(self.cur_token.literal);
+        try text.value.concat("\n");
         self.nextToken();
     }
 
@@ -128,7 +128,8 @@ fn parseTaskList(self: *Parser) !TaskList.List {
     if (self.curTokenIs(.TK_RBRACE)) {
         self.nextToken();
         var des = try self.allocator.create(Ast);
-        des.* = try self.parseText();
+        // TODO: use parseTaskDesc replace, TaskDesc = struct{values:ArrayList(Ast),str:String};
+        des.* = try self.parseParagraph();
         list.des = des;
         return list;
     } else {
@@ -190,7 +191,7 @@ fn parseParagraph(self: *Parser) !Ast {
         self.nextToken();
     }
 
-    while (!self.curTokenIs(.TK_EOF) and !self.peekOtherTokenIs(self.peek_token.ty)) {
+    while (!self.curTokenIs(.TK_EOF) and !self.peekOtherTokenIs(self.cur_token.ty) and !self.peekOtherTokenIs(self.peek_token.ty)) {
         switch (self.cur_token.ty) {
             .TK_STR => {
                 var text = try self.parseText();
@@ -244,6 +245,15 @@ fn parseCode(self: *Parser) !Ast {
 fn parseCodeBlock(self: *Parser) !Ast {
     var codeblock = CodeBlock.init(self.allocator);
     self.nextToken();
+    // std.debug.print(">>>>>>{s}{any}\n", .{ self.cur_token.literal, self.peek_token.ty });
+    if (self.curTokenIs(.TK_STR) and self.peek_token.ty == .TK_BR) {
+        codeblock.lang = self.cur_token.literal;
+        self.nextToken();
+        self.nextToken();
+    } else {
+        codeblock.lang = "";
+    }
+
     var code_text = Text.init(self.allocator);
     var code_ptr = try self.allocator.create(Ast);
     while (!self.curTokenIs(.TK_EOF) and !self.curTokenIs(.TK_CODEBLOCK)) {
@@ -263,6 +273,11 @@ fn parseCodeBlock(self: *Parser) !Ast {
 fn parseLink(self: *Parser) !Ast {
     //skip `[`
     self.nextToken();
+    // `!`
+    if (self.curTokenIs(.TK_BANG)) {
+        //
+        return self.parseIamgeLink();
+    }
     var link = Link.init(self.allocator);
     if (self.curTokenIs(.TK_STR)) {
         var d = try self.allocator.create(Ast);
@@ -285,6 +300,50 @@ fn parseLink(self: *Parser) !Ast {
     self.nextToken();
 
     return .{ .link = link };
+}
+
+// [![image](/assets/img/ship.jpg)](https://github.com/Chanyon)
+fn parseIamgeLink(self: *Parser) !Ast {
+    //skip !
+    self.nextToken();
+    if (self.curTokenIs(.TK_LBRACE)) {
+        self.nextToken();
+    } else {
+        return error.ImageLinkSyntaxError;
+    }
+
+    var image_link = ImageLink.init(self.allocator);
+    if (self.curTokenIs(.TK_STR)) {
+        var alt = try self.allocator.create(Ast);
+        alt.* = try self.parseText();
+        image_link.alt = alt;
+    } else {
+        return error.ImageLinkSyntaxError;
+    }
+    //skip ]
+    self.nextToken();
+    if (self.curTokenIs(.TK_LPAREN)) {
+        self.nextToken();
+        var src = try self.allocator.create(Ast);
+        src.* = try self.parseText();
+        image_link.src = src;
+    } else {
+        return error.ImageLinkSyntaxError;
+    }
+    //skip )
+    self.nextToken();
+    //skip ]
+    self.nextToken();
+    if (self.curTokenIs(.TK_LPAREN)) {
+        self.nextToken();
+        var href = try self.allocator.create(Ast);
+        href.* = try self.parseText();
+        image_link.herf = href;
+    } else return error.ImageLinkSyntaxError;
+
+    //skip )
+    self.nextToken();
+    return .{ .imagelink = image_link };
 }
 
 fn parseImages(self: *Parser) !Ast {
@@ -344,21 +403,24 @@ test Parser {
     defer gpa.deinit();
     const tests = [_]struct { markdown: []const u8, html: []const u8 }{
         //
-        .{ .markdown = "world\n", .html = "<p>world<br></p>" },
+        .{ .markdown = "world\n", .html = "<p>world\n</p><br/>" },
         .{ .markdown = "## hello", .html = "<h2>hello</h2>" },
         .{ .markdown = "----", .html = "<hr/>" },
-        .{ .markdown = "**hi**", .html = "<p><strong>hi</strong></p>" },
-        .{ .markdown = "*hi*", .html = "<p><em>hi</em></p>" },
-        .{ .markdown = "***hi***", .html = "<p><strong><em>hi</em></strong></p>" },
-        .{ .markdown = "~~hi~~", .html = "<p><s>hi</s></p>" },
-        .{ .markdown = "~~hi~~---", .html = "<p><s>hi</s></p><hr/>" },
-        .{ .markdown = "- [x] todo list\n- [ ] list2\n- [x] list3\n", .html = "<div><input type=\"checkout\" checked> todo list<br></input><input type=\"checkout\"> list2<br></input><input type=\"checkout\" checked> list3<br></input></div>" },
-        .{ .markdown = "[hi](https://github.com/)", .html = "<p><a herf=\"https://github.com/\">hi</a></p>" },
-        .{ .markdown = "\ntext page\\_allocator\n~~nihao~~[link](link)`code`", .html = "<p>text page_allocator<br><s>nihao</s><a herf=\"link\">link</a><code>code</code></p>" },
-        .{ .markdown = "`call{}`", .html = "<p><code>call{}</code></p>" },
-        .{ .markdown = "![foo bar](/path/to/train.jpg)", .html = "<p><img src=\"/path/to/train.jpg\" alt=\"foo bar\" title=\"\"/></p>" },
-        .{ .markdown = "hi![foo bar](/path/to/train.jpg)", .html = "<p>hi<img src=\"/path/to/train.jpg\" alt=\"foo bar\" title=\"\"/></p>" },
+        .{ .markdown = "**hi**", .html = "<p><strong>hi</strong></p><br/>" },
+        .{ .markdown = "*hi*", .html = "<p><em>hi</em></p><br/>" },
+        .{ .markdown = "***hi***", .html = "<p><strong><em>hi</em></strong></p><br/>" },
+        .{ .markdown = "~~hi~~", .html = "<p><s>hi</s></p><br/>" },
+        .{ .markdown = "~~hi~~---", .html = "<p><s>hi</s></p><br/><hr/>" },
+        .{ .markdown = "- [x] todo list\n- [ ] list2\n- [x] list3\n", .html = "<div><input type=\"checkbox\" checked><p>todo list\n</p><br/></input><input type=\"checkbox\"><p>list2\n</p><br/></input><input type=\"checkbox\" checked><p>list3\n</p><br/></input></div>" },
+        .{ .markdown = "- [ ] ***hello***", .html = "<div><input type=\"checkbox\"><p><strong><em>hello</em></strong></p><br/></input></div>" },
+        .{ .markdown = "[hi](https://github.com/)", .html = "<p><a herf=\"https://github.com/\">hi</a></p><br/>" },
+        .{ .markdown = "\ntext page\\_allocator\n~~nihao~~[link](link)`code`", .html = "<p>text page_allocator\n<s>nihao</s><a herf=\"link\">link</a><code>code</code></p><br/>" },
+        .{ .markdown = "`call{}`", .html = "<p><code>call{}</code></p><br/>" },
+        .{ .markdown = "![foo bar](/path/to/train.jpg)", .html = "<p><img src=\"/path/to/train.jpg\" alt=\"foo bar\" title=\"\"/></p><br/>" },
+        .{ .markdown = "hi![foo bar](/path/to/train.jpg)", .html = "<p>hi<img src=\"/path/to/train.jpg\" alt=\"foo bar\" title=\"\"/></p><br/>" },
         .{ .markdown = "```fn foo(a:number,b:string):bool{}\n foo(1,\"str\");```", .html = "<pre><code>fn foo(a:number,b:string):bool{}<br> foo(1,\"str\");</code></pre>" },
+        .{ .markdown = "```rust\n fn();```", .html = "<pre><code class=\"language-rust\"> fn();</code></pre>" },
+        .{ .markdown = "[![image](/assets/img/ship.jpg)](https://github.com/Chanyon)", .html = "<p><a herf=\"https://github.com/Chanyon\"><img src=\"/assets/img/ship.jpg\" alt=\"image\"/></a></p><br/>" },
     };
     inline for (tests, 0..) |item, i| {
         var lexer = Lexer.newLexer(item.markdown);
@@ -402,3 +464,4 @@ const Paragrah = ast.Paragraph;
 const Code = ast.Code;
 const Images = ast.Images;
 const CodeBlock = ast.CodeBlock;
+const ImageLink = ast.ImageLink;
