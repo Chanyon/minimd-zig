@@ -19,7 +19,7 @@ const asttype = enum {
     imagelink,
 };
 
-pub const Ast = union(asttype) {
+pub const AstNode = union(asttype) {
     text: Text,
     heading: Heading,
     blank_line: BlankLine,
@@ -47,11 +47,11 @@ pub const Ast = union(asttype) {
 
 pub const TreeNode = struct {
     allocator: std.mem.Allocator,
-    stmts: ArrayList(Ast),
+    stmts: ArrayList(AstNode),
 
     const Self = @This();
     pub fn init(al: std.mem.Allocator) TreeNode {
-        const list = ArrayList(Ast).init(al);
+        const list = ArrayList(AstNode).init(al);
         return TreeNode{ .stmts = list, .allocator = al };
     }
 
@@ -63,7 +63,7 @@ pub const TreeNode = struct {
         return str;
     }
 
-    pub fn addNode(self: *Self, node: Ast) !void {
+    pub fn addNode(self: *Self, node: AstNode) !void {
         try self.stmts.append(node);
     }
 
@@ -93,7 +93,7 @@ pub const Text = struct {
 
 pub const Heading = struct {
     level: u8,
-    value: *Ast = undefined,
+    value: *AstNode = undefined,
     str: String,
 
     const Self = @This();
@@ -136,7 +136,7 @@ pub const Heading = struct {
 pub const BlankLine = struct {
     level: u8,
     ty: asttype = .blank_line,
-    value: ?*Ast = null,
+    value: ?*AstNode = null,
     const Self = @This();
     pub fn init() BlankLine {
         return .{ .level = 0 };
@@ -151,7 +151,7 @@ pub const BlankLine = struct {
 
 pub const Strong = struct {
     level: u8 = 0,
-    value: *Ast = undefined,
+    value: *AstNode = undefined,
     str: String,
     pub fn init(allocator: std.mem.Allocator) Strong {
         return .{ .str = String.init(allocator) };
@@ -179,7 +179,7 @@ pub const Strong = struct {
 };
 
 pub const Strikethrough = struct {
-    value: *Ast = undefined,
+    value: *AstNode = undefined,
     str: String,
     const Self = @This();
     pub fn init(allocator: std.mem.Allocator) Strikethrough {
@@ -203,7 +203,7 @@ pub const TaskList = struct {
 
     pub const List = struct {
         task_is_done: bool,
-        des: *Ast = undefined, //任务描述
+        des: *AstNode = undefined, //任务描述
 
         pub fn init() List {
             return .{ .task_is_done = false };
@@ -247,8 +247,8 @@ pub const TaskList = struct {
 };
 
 pub const Link = struct {
-    herf: *Ast = undefined, //text
-    link_des: *Ast = undefined,
+    herf: *AstNode = undefined, //text
+    link_des: *AstNode = undefined,
     str: String,
     const Self = @This();
     pub fn init(allocator: mem.Allocator) Link {
@@ -273,9 +273,9 @@ pub const Link = struct {
 // [![image](/assets/img/ship.jpg)](https://github.com/Chanyon)
 // <a href="https://github.com/Chanyon"><img src="/assets/img/ship.jpg" alt="image"></a>"
 pub const ImageLink = struct {
-    herf: *Ast = undefined, //a href
-    src: *Ast = undefined, // img src
-    alt: *Ast = undefined,
+    herf: *AstNode = undefined, //a href
+    src: *AstNode = undefined, // img src
+    alt: *AstNode = undefined,
     str: String,
     const Self = @This();
     pub fn init(allocator: mem.Allocator) ImageLink {
@@ -302,13 +302,13 @@ pub const ImageLink = struct {
 };
 
 pub const Paragraph = struct {
-    stmts: ArrayList(Ast),
+    stmts: ArrayList(AstNode),
     str: String,
 
     const Self = @This();
 
     pub fn init(allocator: mem.Allocator) Paragraph {
-        return .{ .stmts = ArrayList(Ast).init(allocator), .str = String.init(allocator) };
+        return .{ .stmts = ArrayList(AstNode).init(allocator), .str = String.init(allocator) };
     }
 
     pub fn string(self: *Self) []const u8 {
@@ -330,7 +330,7 @@ pub const Paragraph = struct {
 };
 
 pub const Code = struct {
-    value: *Ast = undefined,
+    value: *AstNode = undefined,
     str: String,
     const Self = @This();
     pub fn init(allocator: std.mem.Allocator) Code {
@@ -349,7 +349,7 @@ pub const Code = struct {
 };
 
 pub const CodeBlock = struct {
-    value: *Ast = undefined,
+    value: *AstNode = undefined,
     str: String,
     lang: []const u8 = "",
     allocator: mem.Allocator,
@@ -375,8 +375,8 @@ pub const CodeBlock = struct {
 };
 
 pub const Images = struct {
-    src: *Ast = undefined, //text
-    alt: *Ast = undefined,
+    src: *AstNode = undefined, //text
+    alt: *AstNode = undefined,
     str: String,
     title: []const u8 = "",
     const Self = @This();
@@ -406,16 +406,16 @@ test TreeNode {
     defer tree.deinit();
     var text = Text.init(std.testing.allocator);
     try text.value.concat("hello!你好");
-    var text_node = Ast{ .text = text };
+    var text_node = AstNode{ .text = text };
     try tree.addNode(text_node);
 
     var heading = Heading.init(std.testing.allocator);
     var text_2 = Text.init(std.testing.allocator);
     try text_2.value.concat("world!");
-    var text_node_2 = Ast{ .text = text_2 };
+    var text_node_2 = AstNode{ .text = text_2 };
 
     heading.value = &text_node_2;
-    var head_node = Ast{ .heading = heading };
+    var head_node = AstNode{ .heading = heading };
     try tree.addNode(head_node);
 
     var str = try tree.string();

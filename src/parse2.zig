@@ -34,7 +34,7 @@ pub fn parser(self: *Parser) !Tree {
     return tree;
 }
 
-fn parseStatement(self: *Parser) !Ast {
+fn parseStatement(self: *Parser) !AstNode {
     var t = switch (self.cur_token.ty) {
         .TK_WELLNAME => try self.parseHeading(),
         .TK_MINUS => try self.parseBlankLine(),
@@ -45,7 +45,7 @@ fn parseStatement(self: *Parser) !Ast {
     return t;
 }
 
-fn parseText(self: *Parser) !Ast {
+fn parseText(self: *Parser) !AstNode {
     var text = Text.init(self.allocator);
     while (self.curTokenIs(.TK_STR) or self.curTokenIs(.TK_SPACE)) {
         try text.value.concat(self.cur_token.literal);
@@ -59,7 +59,7 @@ fn parseText(self: *Parser) !Ast {
     return .{ .text = text };
 }
 
-fn parseHeading(self: *Parser) !Ast {
+fn parseHeading(self: *Parser) !AstNode {
     var heading = Heading.init(self.allocator);
     while (self.curTokenIs(.TK_WELLNAME)) {
         heading.level += 1;
@@ -69,14 +69,14 @@ fn parseHeading(self: *Parser) !Ast {
         self.nextToken();
     }
 
-    var value = try self.allocator.create(Ast);
+    var value = try self.allocator.create(AstNode);
     value.* = try self.parseText();
     heading.value = value;
 
     return .{ .heading = heading };
 }
 
-fn parseBlankLine(self: *Parser) !Ast {
+fn parseBlankLine(self: *Parser) !AstNode {
     var blank_line = BlankLine.init();
 
     while (self.curTokenIs(.TK_MINUS)) {
@@ -127,8 +127,8 @@ fn parseTaskList(self: *Parser) !TaskList.List {
     }
     if (self.curTokenIs(.TK_RBRACE)) {
         self.nextToken();
-        var des = try self.allocator.create(Ast);
-        // TODO: use parseTaskDesc replace, TaskDesc = struct{values:ArrayList(Ast),str:String};
+        var des = try self.allocator.create(AstNode);
+        // TODO: use parseTaskDesc replace, TaskDesc = struct{values:ArrayList(AstNode),str:String};
         des.* = try self.parseParagraph();
         list.des = des;
         return list;
@@ -138,14 +138,14 @@ fn parseTaskList(self: *Parser) !TaskList.List {
 }
 
 // ***string***
-fn parseStrong(self: *Parser) !Ast {
+fn parseStrong(self: *Parser) !AstNode {
     var strong = Strong.init(self.allocator);
     while (self.curTokenIs(.TK_ASTERISKS)) {
         strong.level += 1;
         self.nextToken();
     }
     if (self.curTokenIs(.TK_STR)) {
-        var value = try self.allocator.create(Ast);
+        var value = try self.allocator.create(AstNode);
         value.* = try self.parseText();
         strong.value = value;
     }
@@ -162,14 +162,14 @@ fn parseStrong(self: *Parser) !Ast {
     return .{ .strong = strong };
 }
 
-fn parseStrikethrough(self: *Parser) !Ast {
+fn parseStrikethrough(self: *Parser) !AstNode {
     var stri = Strikethrough.init(self.allocator);
     while (self.curTokenIs(.TK_STRIKETHROUGH)) {
         self.nextToken();
     }
 
     if (self.curTokenIs(.TK_STR)) {
-        var value = try self.allocator.create(Ast);
+        var value = try self.allocator.create(AstNode);
         value.* = try self.parseText();
         stri.value = value;
     }
@@ -184,7 +184,7 @@ fn parseStrikethrough(self: *Parser) !Ast {
     return .{ .strikethrough = stri };
 }
 
-fn parseParagraph(self: *Parser) !Ast {
+fn parseParagraph(self: *Parser) !AstNode {
     var paragraph = Paragrah.init(self.allocator);
     // \n skip
     while (self.curTokenIs(.TK_BR)) {
@@ -226,12 +226,12 @@ fn parseParagraph(self: *Parser) !Ast {
     return .{ .paragraph = paragraph };
 }
 
-fn parseCode(self: *Parser) !Ast {
+fn parseCode(self: *Parser) !AstNode {
     var code = Code.init(self.allocator);
     self.nextToken();
 
     if (self.curTokenIs(.TK_STR)) {
-        var text = try self.allocator.create(Ast);
+        var text = try self.allocator.create(AstNode);
         text.* = try self.parseText();
         code.value = text;
     } else {
@@ -242,7 +242,7 @@ fn parseCode(self: *Parser) !Ast {
     return .{ .code = code };
 }
 
-fn parseCodeBlock(self: *Parser) !Ast {
+fn parseCodeBlock(self: *Parser) !AstNode {
     var codeblock = CodeBlock.init(self.allocator);
     self.nextToken();
     // std.debug.print(">>>>>>{s}{any}\n", .{ self.cur_token.literal, self.peek_token.ty });
@@ -255,7 +255,7 @@ fn parseCodeBlock(self: *Parser) !Ast {
     }
 
     var code_text = Text.init(self.allocator);
-    var code_ptr = try self.allocator.create(Ast);
+    var code_ptr = try self.allocator.create(AstNode);
     while (!self.curTokenIs(.TK_EOF) and !self.curTokenIs(.TK_CODEBLOCK)) {
         try code_text.value.concat(self.cur_token.literal);
         self.nextToken();
@@ -270,7 +270,7 @@ fn parseCodeBlock(self: *Parser) !Ast {
     return .{ .codeblock = codeblock };
 }
 
-fn parseLink(self: *Parser) !Ast {
+fn parseLink(self: *Parser) !AstNode {
     //skip `[`
     self.nextToken();
     // `!`
@@ -280,7 +280,7 @@ fn parseLink(self: *Parser) !Ast {
     }
     var link = Link.init(self.allocator);
     if (self.curTokenIs(.TK_STR)) {
-        var d = try self.allocator.create(Ast);
+        var d = try self.allocator.create(AstNode);
         d.* = try self.parseText();
         link.link_des = d;
     } else {
@@ -290,7 +290,7 @@ fn parseLink(self: *Parser) !Ast {
     self.nextToken();
     if (self.curTokenIs(.TK_LPAREN)) {
         self.nextToken();
-        var h = try self.allocator.create(Ast);
+        var h = try self.allocator.create(AstNode);
         h.* = try self.parseText();
         link.herf = h;
     } else {
@@ -303,7 +303,7 @@ fn parseLink(self: *Parser) !Ast {
 }
 
 // [![image](/assets/img/ship.jpg)](https://github.com/Chanyon)
-fn parseIamgeLink(self: *Parser) !Ast {
+fn parseIamgeLink(self: *Parser) !AstNode {
     //skip !
     self.nextToken();
     if (self.curTokenIs(.TK_LBRACE)) {
@@ -314,7 +314,7 @@ fn parseIamgeLink(self: *Parser) !Ast {
 
     var image_link = ImageLink.init(self.allocator);
     if (self.curTokenIs(.TK_STR)) {
-        var alt = try self.allocator.create(Ast);
+        var alt = try self.allocator.create(AstNode);
         alt.* = try self.parseText();
         image_link.alt = alt;
     } else {
@@ -324,7 +324,7 @@ fn parseIamgeLink(self: *Parser) !Ast {
     self.nextToken();
     if (self.curTokenIs(.TK_LPAREN)) {
         self.nextToken();
-        var src = try self.allocator.create(Ast);
+        var src = try self.allocator.create(AstNode);
         src.* = try self.parseText();
         image_link.src = src;
     } else {
@@ -336,7 +336,7 @@ fn parseIamgeLink(self: *Parser) !Ast {
     self.nextToken();
     if (self.curTokenIs(.TK_LPAREN)) {
         self.nextToken();
-        var href = try self.allocator.create(Ast);
+        var href = try self.allocator.create(AstNode);
         href.* = try self.parseText();
         image_link.herf = href;
     } else return error.ImageLinkSyntaxError;
@@ -346,7 +346,7 @@ fn parseIamgeLink(self: *Parser) !Ast {
     return .{ .imagelink = image_link };
 }
 
-fn parseImages(self: *Parser) !Ast {
+fn parseImages(self: *Parser) !AstNode {
     //skip !
     self.nextToken();
     //skip `[`
@@ -357,7 +357,7 @@ fn parseImages(self: *Parser) !Ast {
     }
     var image = Images.init(self.allocator);
     if (self.curTokenIs(.TK_STR)) {
-        var d = try self.allocator.create(Ast);
+        var d = try self.allocator.create(AstNode);
         d.* = try self.parseText();
         image.alt = d;
     } else {
@@ -367,7 +367,7 @@ fn parseImages(self: *Parser) !Ast {
     self.nextToken();
     if (self.curTokenIs(.TK_LPAREN)) {
         self.nextToken();
-        var src = try self.allocator.create(Ast);
+        var src = try self.allocator.create(AstNode);
         src.* = try self.parseText();
         image.src = src;
 
@@ -452,7 +452,7 @@ const Token = token.Token;
 const TokenType = token.TokenType;
 const ast = @import("ast.zig");
 const Tree = ast.TreeNode;
-const Ast = ast.Ast;
+const AstNode = ast.AstNode;
 const Text = ast.Text;
 const Heading = ast.Heading;
 const BlankLine = ast.BlankLine;
