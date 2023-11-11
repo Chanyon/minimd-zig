@@ -4,6 +4,12 @@ allocator: std.mem.Allocator,
 lex: *Lexer,
 cur_token: Token,
 peek_token: Token,
+context: Context,
+
+const Context = struct {
+    orderlist: bool,
+    space: u8,
+};
 
 fn init(lex: *Lexer, al: std.mem.Allocator) Parser {
     var p = Parser{
@@ -12,6 +18,7 @@ fn init(lex: *Lexer, al: std.mem.Allocator) Parser {
         .lex = lex,
         .cur_token = undefined,
         .peek_token = undefined,
+        .context = .{ .orderlist = false, .space = 1 },
     };
     p.nextToken();
     p.nextToken();
@@ -39,6 +46,7 @@ fn parseStatement(self: *Parser) !AstNode {
         .TK_WELLNAME => try self.parseHeading(),
         .TK_MINUS => try self.parseBlankLine(),
         .TK_CODEBLOCK => try self.parseCodeBlock(),
+        .TK_VERTICAL => try self.parseTable(),
         else => try self.parseParagraph(),
     };
 
@@ -108,8 +116,10 @@ fn parseBlankLine(self: *Parser) !AstNode {
                 }
             }
             return .{ .task_list = task };
+        } else if (self.curTokenIs(.TK_SPACE)) {
+            return try self.parseOrderList();
         } else {
-            // return .{ .blank_line = blank_line };
+            return error.TaskOrUnorderListError;
         }
     }
     return .{ .blank_line = blank_line };
@@ -127,14 +137,47 @@ fn parseTaskList(self: *Parser) !TaskList.List {
     }
     if (self.curTokenIs(.TK_RBRACE)) {
         self.nextToken();
-        var des = try self.allocator.create(AstNode);
-        // TODO: use parseTaskDesc replace, TaskDesc = struct{values:ArrayList(AstNode),str:String};
-        des.* = try self.parseParagraph();
+        var des = try self.allocator.create(TaskList.List.TaskDesc);
+        des.* = try self.parseTaskDesc();
         list.des = des;
         return list;
     } else {
         return error.TaskListError;
     }
+}
+
+fn parseTaskDesc(self: *Parser) !TaskList.List.TaskDesc {
+    var task_desc = TaskList.List.TaskDesc.init(self.allocator);
+
+    while (!self.curTokenIs(.TK_EOF) and !self.peekOtherTokenIs(self.cur_token.ty) and !self.peekOtherTokenIs(self.peek_token.ty)) {
+        switch (self.cur_token.ty) {
+            .TK_STR => {
+                var text = try self.parseText();
+                try task_desc.stmts.append(text);
+            },
+            .TK_STRIKETHROUGH => {
+                var s = try self.parseStrikethrough();
+                try task_desc.stmts.append(s);
+            },
+            .TK_LBRACE => {
+                var link = try self.parseLink();
+                try task_desc.stmts.append(link);
+            },
+            .TK_CODE => {
+                var code = try self.parseCode();
+                try task_desc.stmts.append(code);
+            },
+            .TK_ASTERISKS => {
+                var strong = try self.parseStrong();
+                try task_desc.stmts.append(strong);
+            },
+            else => {
+                self.nextToken();
+            },
+        }
+    }
+
+    return task_desc;
 }
 
 // ***string***
@@ -191,7 +234,7 @@ fn parseParagraph(self: *Parser) !AstNode {
         self.nextToken();
     }
 
-    while (!self.curTokenIs(.TK_EOF) and !self.peekOtherTokenIs(self.cur_token.ty) and !self.peekOtherTokenIs(self.peek_token.ty)) {
+    while (!self.curTokenIs(.TK_EOF) and !self.peekOtherTokenIs(self.cur_token.ty)) {
         switch (self.cur_token.ty) {
             .TK_STR => {
                 var text = try self.parseText();
@@ -381,6 +424,151 @@ fn parseImages(self: *Parser) !AstNode {
     return .{ .images = image };
 }
 
+fn parseOrderList(self: *Parser) !AstNode {
+    // - hello
+    //   - hi
+    //- world
+    var unorder_list = UnorderList.init(self.allocator);
+
+    var space: u8 = 1;
+    // skip `space`
+    while (!self.curTokenIs(.TK_EOF) and !self.peekOtherTokenIs(self.peek_token.ty)) {
+        self.nextToken();
+        var list_item = UnorderList.Item.init(self.allocator);
+        list_item.space = space;
+        while (!self.curTokenIs(.TK_EOF) and !self.curTokenIs(.TK_MINUS) and !self.peekOtherTokenIs(self.peek_token.ty)) {
+            switch (self.cur_token.ty) {
+                .TK_STR => {
+                    try list_item.stmts.append(try self.parseText());
+                    space = 1;
+                },
+                .TK_ASTERISKS => {
+                    try list_item.stmts.append(try self.parseStrong());
+                },
+                .TK_STRIKETHROUGH => {
+                    var s = try self.parseStrikethrough();
+                    try list_item.stmts.append(s);
+                },
+                .TK_LBRACE => {
+                    var link = try self.parseLink();
+                    try list_item.stmts.append(link);
+                },
+                .TK_CODE => {
+                    var code = try self.parseCode();
+                    try list_item.stmts.append(code);
+                    // std.debug.print(">>>>>>{s}{any}\n", .{ self.cur_token.literal, self.peek_token.ty });
+                },
+                .TK_SPACE => {
+                    space += 1;
+                    self.nextToken();
+                },
+                else => {
+                    self.nextToken();
+                },
+            }
+        }
+        // std.debug.print("{}-##############\n", .{list_item.space});
+        try unorder_list.stmts.append(list_item);
+
+        self.nextToken(); //skip -
+    }
+
+    return .{ .unorderlist = unorder_list };
+}
+
+fn parseTable(self: *Parser) !AstNode {
+    self.nextToken();
+
+    var tb = Table.init(self.allocator);
+    // | one | two | three |\n
+    // | :----------- | --------: |  :-----: |
+
+    //thead and align style
+    while (!self.curTokenIs(.TK_EOF) and !self.peekOtherTokenIs(self.cur_token.ty)) {
+        while (self.curTokenIs(.TK_SPACE)) {
+            self.nextToken();
+        }
+
+        if (self.curTokenIs(.TK_STR)) {
+            const th = try self.parseParagraph();
+            try tb.thead.append(th);
+            while (self.curTokenIs(.TK_SPACE)) {
+                self.nextToken();
+            }
+        }
+        if (!tb.cols_done and self.curTokenIs(.TK_VERTICAL)) {
+            // |\n |
+            if (self.peek_token.ty == .TK_BR) {
+                tb.cols_done = true;
+                tb.cols += 1;
+                self.nextToken();
+                self.nextToken();
+            } else {
+                tb.cols += 1;
+            }
+        }
+
+        // :--- :---:
+        if (self.curTokenIs(.TK_COLON) and self.peekOtherTokenIs(.TK_MINUS)) {
+            self.nextToken();
+            while (self.curTokenIs(.TK_MINUS)) {
+                self.nextToken();
+            }
+
+            if (self.curTokenIs(.TK_COLON)) {
+                try tb.align_style.append(.center);
+                self.nextToken();
+            } else {
+                try tb.align_style.append(.left);
+            }
+            while (self.curTokenIs(.TK_SPACE)) {
+                self.nextToken();
+            }
+        }
+        // ---:
+        if (self.curTokenIs(.TK_MINUS)) {
+            while (self.curTokenIs(.TK_MINUS)) {
+                self.nextToken();
+            }
+            if (self.curTokenIs(.TK_COLON)) {
+                try tb.align_style.append(.right);
+                self.nextToken();
+            }
+            while (self.curTokenIs(.TK_SPACE)) {
+                self.nextToken();
+            }
+        }
+
+        self.nextToken();
+        if (self.curTokenIs(.TK_BR)) {
+            self.nextToken();
+            break;
+        }
+    }
+
+    //tbody
+    // | Header one | Title two |  will three |
+    // | Paragraph one  | Text two |  why  three |
+    self.nextToken(); //skip `|`
+    while (!self.curTokenIs(.TK_EOF) and !self.peekOtherTokenIs(self.cur_token.ty)) {
+        while (self.curTokenIs(.TK_SPACE)) {
+            self.nextToken();
+        }
+        //text p
+        const tbody = try self.parseParagraph();
+        try tb.tbody.append(tbody);
+
+        // std.debug.print(">>>>>>{any} {any}\n", .{ self.cur_token.ty, self.peek_token.ty });
+        self.nextToken();
+        if (self.curTokenIs(.TK_BR) and self.peek_token.ty == .TK_VERTICAL) {
+            self.nextToken();
+            self.nextToken();
+        } else self.nextToken();
+    }
+
+    return .{ .table = tb };
+}
+
 fn curTokenIs(self: *Parser, tok: TokenType) bool {
     return tok == self.cur_token.ty;
 }
@@ -397,30 +585,77 @@ fn peekOtherTokenIs(self: *Parser, tok: TokenType) bool {
     return false;
 }
 
+fn expect(self: *Parser, tok: TokenType) !bool {
+    if (self.cur_token.ty == tok) {
+        self.nextToken();
+        return true;
+    } else error.SyntaxError;
+}
+
 test Parser {
     var gpa = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     const allocator = gpa.allocator();
     defer gpa.deinit();
-    const tests = [_]struct { markdown: []const u8, html: []const u8 }{
+    const TestV = struct {
+        markdown: []const u8,
+        html: []const u8,
+
+        const tasks =
+            \\- [x] todo list
+            \\- [ ] list2
+            \\- [x] list3
+            \\
+        ;
+        const unorderlist =
+            // \\- hello
+            // \\  undefined
+            // \\    - world
+            // \\      - ***reqest***
+            // \\      huhu
+            // \\- `heiheo`
+            // \\- yyyy
+            // \\- llll
+            \\- hello
+            \\   - hi
+            \\     - qo
+            \\     - qp
+            \\       - dcy
+            \\         - cheng
+            \\         - qq
+            \\   - oi
+            \\- kkkk
+            \\- world
+        ;
+
+        const table =
+            \\| one | two | three|
+            \\| :--- | :---:| ---:|
+            \\| hi | wooo | hello  |
+            \\
+        ;
+    };
+    const tests = [_]TestV{
         //
-        .{ .markdown = "world\n", .html = "<p>world\n</p><br/>" },
+        .{ .markdown = "world\n", .html = "<p>world\n</p>" },
         .{ .markdown = "## hello", .html = "<h2>hello</h2>" },
         .{ .markdown = "----", .html = "<hr/>" },
-        .{ .markdown = "**hi**", .html = "<p><strong>hi</strong></p><br/>" },
-        .{ .markdown = "*hi*", .html = "<p><em>hi</em></p><br/>" },
-        .{ .markdown = "***hi***", .html = "<p><strong><em>hi</em></strong></p><br/>" },
-        .{ .markdown = "~~hi~~", .html = "<p><s>hi</s></p><br/>" },
-        .{ .markdown = "~~hi~~---", .html = "<p><s>hi</s></p><br/><hr/>" },
-        .{ .markdown = "- [x] todo list\n- [ ] list2\n- [x] list3\n", .html = "<div><input type=\"checkbox\" checked><p>todo list\n</p><br/></input><input type=\"checkbox\"><p>list2\n</p><br/></input><input type=\"checkbox\" checked><p>list3\n</p><br/></input></div>" },
-        .{ .markdown = "- [ ] ***hello***", .html = "<div><input type=\"checkbox\"><p><strong><em>hello</em></strong></p><br/></input></div>" },
-        .{ .markdown = "[hi](https://github.com/)", .html = "<p><a herf=\"https://github.com/\">hi</a></p><br/>" },
-        .{ .markdown = "\ntext page\\_allocator\n~~nihao~~[link](link)`code`", .html = "<p>text page_allocator\n<s>nihao</s><a herf=\"link\">link</a><code>code</code></p><br/>" },
-        .{ .markdown = "`call{}`", .html = "<p><code>call{}</code></p><br/>" },
-        .{ .markdown = "![foo bar](/path/to/train.jpg)", .html = "<p><img src=\"/path/to/train.jpg\" alt=\"foo bar\" title=\"\"/></p><br/>" },
-        .{ .markdown = "hi![foo bar](/path/to/train.jpg)", .html = "<p>hi<img src=\"/path/to/train.jpg\" alt=\"foo bar\" title=\"\"/></p><br/>" },
+        .{ .markdown = "**hi**", .html = "<p><strong>hi</strong></p>" },
+        .{ .markdown = "*hi*", .html = "<p><em>hi</em></p>" },
+        .{ .markdown = "***hi***", .html = "<p><strong><em>hi</em></strong></p>" },
+        .{ .markdown = "~~hi~~", .html = "<p><s>hi</s></p>" },
+        .{ .markdown = "~~hi~~---", .html = "<p><s>hi</s></p><hr/>" },
+        .{ .markdown = TestV.tasks, .html = "<section><div><input type=\"checkbox\" checked><p style=\"display:inline-block\">&nbsp;todo list\n</p></input></div><div><input type=\"checkbox\"><p style=\"display:inline-block\">&nbsp;list2\n</p></input></div><div><input type=\"checkbox\" checked><p style=\"display:inline-block\">&nbsp;list3\n</p></input></div></section>" },
+        .{ .markdown = "- [ ] ***hello***", .html = "<section><div><input type=\"checkbox\"><p style=\"display:inline-block\">&nbsp;<strong><em>hello</em></strong></p></input></div></section>" },
+        .{ .markdown = "[hi](https://github.com/)", .html = "<p><a herf=\"https://github.com/\">hi</a></p>" },
+        .{ .markdown = "\ntext page\\_allocator\n~~nihao~~[link](link)`code`", .html = "<p>text page_allocator\n<s>nihao</s><a herf=\"link\">link</a><code>code</code></p>" },
+        .{ .markdown = "`call{}`", .html = "<p><code>call{}</code></p>" },
+        .{ .markdown = "![foo bar](/path/to/train.jpg)", .html = "<p><img src=\"/path/to/train.jpg\" alt=\"foo bar\" title=\"\"/></p>" },
+        .{ .markdown = "hi![foo bar](/path/to/train.jpg)", .html = "<p>hi<img src=\"/path/to/train.jpg\" alt=\"foo bar\" title=\"\"/></p>" },
         .{ .markdown = "```fn foo(a:number,b:string):bool{}\n foo(1,\"str\");```", .html = "<pre><code>fn foo(a:number,b:string):bool{}<br> foo(1,\"str\");</code></pre>" },
         .{ .markdown = "```rust\n fn();```", .html = "<pre><code class=\"language-rust\"> fn();</code></pre>" },
-        .{ .markdown = "[![image](/assets/img/ship.jpg)](https://github.com/Chanyon)", .html = "<p><a herf=\"https://github.com/Chanyon\"><img src=\"/assets/img/ship.jpg\" alt=\"image\"/></a></p><br/>" },
+        .{ .markdown = "[![image](/assets/img/ship.jpg)](https://github.com/Chanyon)", .html = "<p><a herf=\"https://github.com/Chanyon\"><img src=\"/assets/img/ship.jpg\" alt=\"image\"/></a></p>" },
+        // .{ .markdown = TestV.unorderlist, .html = "1" },
+        .{ .markdown = TestV.table, .html = "<table><thead><th style=\"text-align:left\"><p>one </p></th><th style=\"text-align:center\"><p>two </p></th><th style=\"text-align:right\"><p>three</p></th></thead><tbody><tr><td style=\"text-align:left\"><p>hi </p></td><td style=\"text-align:center\"><p>wooo </p></td><td style=\"text-align:right\"><p>hello  </p></td></tr></tbody></table>" },
     };
     inline for (tests, 0..) |item, i| {
         var lexer = Lexer.newLexer(item.markdown);
@@ -465,3 +700,5 @@ const Code = ast.Code;
 const Images = ast.Images;
 const CodeBlock = ast.CodeBlock;
 const ImageLink = ast.ImageLink;
+const UnorderList = ast.UnorderList;
+const Table = ast.Table;

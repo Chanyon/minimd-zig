@@ -17,6 +17,8 @@ const asttype = enum {
     codeblock,
     images,
     imagelink,
+    unorderlist,
+    table,
 };
 
 pub const AstNode = union(asttype) {
@@ -32,6 +34,8 @@ pub const AstNode = union(asttype) {
     images: Images,
     codeblock: CodeBlock,
     imagelink: ImageLink,
+    unorderlist: UnorderList,
+    table: Table,
     pub fn string(self: *@This()) []const u8 {
         return switch (self.*) {
             inline else => |*s| s.string(),
@@ -203,7 +207,33 @@ pub const TaskList = struct {
 
     pub const List = struct {
         task_is_done: bool,
-        des: *AstNode = undefined, //任务描述
+        des: *TaskDesc = undefined, //任务描述
+
+        pub const TaskDesc = struct {
+            stmts: ArrayList(AstNode),
+            str: String,
+
+            pub fn init(allocator: mem.Allocator) TaskDesc {
+                return .{ .stmts = ArrayList(AstNode).init(allocator), .str = String.init(allocator) };
+            }
+
+            pub fn string(self: *TaskDesc) []const u8 {
+                self.str.concat("<p style=\"display:inline-block\">&nbsp;") catch return "";
+                for (self.stmts.items) |*node| {
+                    self.str.concat(node.string()) catch return "";
+                }
+                self.str.concat("</p>") catch return "";
+                return self.str.str();
+            }
+
+            pub fn deinit(self: *TaskDesc) void {
+                for (self.stmts.items) |*node| {
+                    node.deinit();
+                }
+                self.stmts.deinit();
+                self.str.deinit();
+            }
+        };
 
         pub fn init() List {
             return .{ .task_is_done = false };
@@ -224,8 +254,9 @@ pub const TaskList = struct {
     }
 
     pub fn string(self: *Self) []const u8 {
-        self.str.concat("<div>") catch return "";
+        self.str.concat("<section>") catch return "";
         for (self.tasks.items) |*task| {
+            self.str.concat("<div>") catch return "";
             if (task.task_is_done) {
                 self.str.concat("<input type=\"checkbox\" checked>") catch return "";
             } else {
@@ -233,8 +264,9 @@ pub const TaskList = struct {
             }
             self.str.concat(task.string()) catch return "";
             self.str.concat("</input>") catch return "";
+            self.str.concat("</div>") catch return "";
         }
-        self.str.concat("</div>") catch return "";
+        self.str.concat("</section>") catch return "";
         return self.str.str();
     }
 
@@ -316,7 +348,7 @@ pub const Paragraph = struct {
         for (self.stmts.items) |*node| {
             self.str.concat(node.string()) catch return "";
         }
-        self.str.concat("</p><br/>") catch return "";
+        self.str.concat("</p>") catch return "";
         return self.str.str();
     }
 
@@ -400,6 +432,197 @@ pub const Images = struct {
         self.str.deinit();
     }
 };
+
+pub const UnorderList = struct {
+    pub const Item = struct {
+        space: u8 = 1,
+        stmts: ArrayList(AstNode),
+        str: String,
+        pub fn init(allocator: mem.Allocator) Item {
+            return .{ .stmts = ArrayList(AstNode).init(allocator), .str = String.init(allocator) };
+        }
+
+        pub fn string(self: *Item) []const u8 {
+            for (self.stmts.items) |*item| {
+                self.str.concat(item.string()) catch return "";
+            }
+            return self.str.str();
+        }
+        pub fn deinit(self: *Item) void {
+            for (self.stmts.items) |*node| {
+                node.deinit();
+            }
+            self.stmts.deinit();
+            self.str.deinit();
+        }
+    };
+    stmts: ArrayList(Item),
+    str: String,
+    const Self = @This();
+    pub fn init(allocator: mem.Allocator) Self {
+        return .{ .stmts = ArrayList(Item).init(allocator), .str = String.init(allocator) };
+    }
+    // \\- hello 1
+    // \\   - hi 3
+    // \\     - qo 5
+    // \\     - qp 5
+    // \\       - dcy 7
+    // \\         - cheng 9
+    // \\     - qq  5
+    // \\   - oi 3
+    // \\- kkkk 1
+    // \\- world 1
+    pub fn string(self: *Self) []const u8 {
+        var idx: usize = 1;
+        const len = self.stmts.items.len;
+        self.str.concat("<ul>") catch return "";
+        self.str.concat("<li>") catch return "";
+        self.str.concat(self.stmts.items[0].string()) catch return "";
+        self.str.concat("</li>") catch return "";
+
+        var count: isize = 0;
+        while (idx < len) : (idx += 1) {
+            var prev_idx: usize = 0;
+            while (prev_idx < idx) : (prev_idx += 1) {
+                if (self.stmts.items[idx].space == self.stmts.items[prev_idx].space) {
+                    if (self.stmts.items[idx].space < self.stmts.items[idx - 1].space) {
+                        self.str.concat("</ul>") catch return "";
+                    }
+
+                    self.str.concat("<li>") catch return "";
+                    self.str.concat(self.stmts.items[idx].string()) catch return "";
+                    self.str.concat("</li>") catch return "";
+
+                    break;
+                }
+            }
+
+            if (self.stmts.items[idx].space > self.stmts.items[idx - 1].space) {
+                count += 1;
+                self.str.concat("<ul>") catch return "";
+                self.str.concat("<li>") catch return "";
+                self.str.concat(self.stmts.items[idx].string()) catch return "";
+                self.str.concat("</li>") catch return "";
+                if (idx == len - 1 or (idx < len - 1 and self.stmts.items[idx].space > self.stmts.items[idx + 1].space)) {
+                    self.str.concat("</ul>") catch return "";
+                }
+            }
+        }
+
+        self.str.concat("</ul>") catch return "";
+
+        return self.str.str();
+    }
+
+    fn deinit(self: *Self) void {
+        for (self.stmts.items) |*item| {
+            item.deinit();
+        }
+        self.stmts.deinit();
+        self.str.deinit();
+    }
+};
+
+pub const Table = struct {
+    cols: u8 = 0,
+    cols_done: bool = false,
+    align_style: ArrayList(Align),
+    thead: ArrayList(AstNode),
+    tbody: ArrayList(AstNode),
+    str: String,
+    pub const Align = enum {
+        //
+        left,
+        center,
+        right,
+    };
+    const Self = @This();
+
+    pub fn init(allocator: mem.Allocator) Self {
+        return .{
+            .align_style = ArrayList(Align).init(allocator),
+            .thead = ArrayList(AstNode).init(allocator),
+            .tbody = ArrayList(AstNode).init(allocator),
+            .str = String.init(allocator),
+        };
+    }
+
+    pub fn string(self: *Self) []const u8 {
+        self.str.concat("<table>") catch return "";
+        self.str.concat("<thead>") catch return "";
+
+        const alen = self.align_style.items.len;
+        const thlen = self.thead.items.len;
+        for (self.thead.items, 0..) |*head, i| {
+            if (alen == 0) {
+                self.str.concat("<th style=\"text-align:left\">") catch return "";
+            } else {
+                std.debug.assert(alen == thlen);
+                switch (self.align_style.items[i]) {
+                    .left => {
+                        self.str.concat("<th style=\"text-align:left\">") catch return "";
+                    },
+                    .center => {
+                        self.str.concat("<th style=\"text-align:center\">") catch return "";
+                    },
+                    .right => {
+                        self.str.concat("<th style=\"text-align:right\">") catch return "";
+                    },
+                }
+            }
+            self.str.concat(head.string()) catch return "";
+            self.str.concat("</th>") catch return "";
+        }
+        self.str.concat("</thead>") catch return "";
+        self.str.concat("<tbody>") catch return "";
+        var idx: usize = 0;
+        const tblen = self.tbody.items.len;
+        std.debug.print("{any}\n", .{tblen});
+        while (idx < tblen) : (idx += self.cols) {
+            self.str.concat("<tr>") catch return "";
+            var k: usize = idx;
+            while (k < idx + self.cols) : (k += 1) {
+                if (alen == 0) {
+                    self.str.concat("<td style=\"text-align:left\">") catch return "";
+                } else {
+                    std.debug.assert(alen == thlen);
+                    switch (self.align_style.items[@mod(k, alen)]) {
+                        .left => {
+                            self.str.concat("<td style=\"text-align:left\">") catch return "";
+                        },
+                        .center => {
+                            self.str.concat("<td style=\"text-align:center\">") catch return "";
+                        },
+                        .right => {
+                            self.str.concat("<td style=\"text-align:right\">") catch return "";
+                        },
+                    }
+                }
+                self.str.concat(self.tbody.items[k].string()) catch return "";
+                self.str.concat("</td>") catch return "";
+            }
+            self.str.concat("</tr>") catch return "";
+        }
+        self.str.concat("</tbody>") catch return "";
+        self.str.concat("</table>") catch return "";
+
+        return self.str.str();
+    }
+
+    pub fn deinit(self: *Self) void {
+        self.align_style.deinit();
+        self.thead.deinit();
+        self.tbody.deinit();
+        self.str.deinit();
+    }
+};
+
+// todo parse2
+// - [ ] 无序列表
+// - [ ] 有序列表
+// - [ ] 内嵌HTML
+// - [ ] 脚注(footnote)
+//- [ ] 标题目录
 
 test TreeNode {
     var tree = TreeNode.init(std.testing.allocator);
