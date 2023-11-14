@@ -472,43 +472,48 @@ pub const UnorderList = struct {
     // \\   - oi 3
     // \\- kkkk 1
     // \\- world 1
+
+    // case 2
+    // - o
+    //   - t
+    //     - f
     pub fn string(self: *Self) []const u8 {
         var idx: usize = 1;
+        _ = idx;
         const len = self.stmts.items.len;
+        _ = len;
         self.str.concat("<ul>") catch return "";
         self.str.concat("<li>") catch return "";
         self.str.concat(self.stmts.items[0].string()) catch return "";
         self.str.concat("</li>") catch return "";
 
-        var count: isize = 0;
-        while (idx < len) : (idx += 1) {
-            var prev_idx: usize = 0;
-            while (prev_idx < idx) : (prev_idx += 1) {
-                if (self.stmts.items[idx].space == self.stmts.items[prev_idx].space) {
-                    if (self.stmts.items[idx].space < self.stmts.items[idx - 1].space) {
-                        self.str.concat("</ul>") catch return "";
-                    }
+        var entry_list: ArrayList(usize) = ArrayList(usize).init(std.heap.page_allocator);
+        defer entry_list.deinit();
 
-                    self.str.concat("<li>") catch return "";
-                    self.str.concat(self.stmts.items[idx].string()) catch return "";
-                    self.str.concat("</li>") catch return "";
+        // while (idx < len) : (idx += 1) {
+        //     if (self.stmts.items[idx].space == self.stmts.items[idx - 1].space) {
+        //         self.str.concat("<li>") catch return "";
+        //         self.str.concat(self.stmts.items[idx].string()) catch return "";
+        //         self.str.concat("</li>") catch return "";
+        //     }
+        //     if (self.stmts.items[idx].space > self.stmts.items[idx - 1].space) {
+        //         entry_list.append(idx) catch unreachable;
 
-                    break;
-                }
-            }
+        //         self.str.concat("<ul>") catch return "";
+        //         self.str.concat("<li>") catch return "";
+        //         self.str.concat(self.stmts.items[idx].string()) catch return "";
+        //         self.str.concat("</li>") catch return "";
+        //     }
 
-            if (self.stmts.items[idx].space > self.stmts.items[idx - 1].space) {
-                count += 1;
-                self.str.concat("<ul>") catch return "";
-                self.str.concat("<li>") catch return "";
-                self.str.concat(self.stmts.items[idx].string()) catch return "";
-                self.str.concat("</li>") catch return "";
-                if (idx == len - 1 or (idx < len - 1 and self.stmts.items[idx].space > self.stmts.items[idx + 1].space)) {
-                    self.str.concat("</ul>") catch return "";
-                }
-            }
-        }
-
+        //     if (self.stmts.items[idx].space < self.stmts.items[idx - 1].space) {
+        //         if (self.stmts.items[idx].space == self.stmts.items[0].space) {
+        //             self.str.concat("</ul>") catch return "";
+        //             self.str.concat("<li>") catch return "";
+        //             self.str.concat(self.stmts.items[idx].string()) catch return "";
+        //             self.str.concat("</li>") catch return "";
+        //         }
+        //     }
+        // }
         self.str.concat("</ul>") catch return "";
 
         return self.str.str();
@@ -575,9 +580,9 @@ pub const Table = struct {
         }
         self.str.concat("</thead>") catch return "";
         self.str.concat("<tbody>") catch return "";
+
         var idx: usize = 0;
         const tblen = self.tbody.items.len;
-        std.debug.print("{any}\n", .{tblen});
         while (idx < tblen) : (idx += self.cols) {
             self.str.concat("<tr>") catch return "";
             var k: usize = idx;
