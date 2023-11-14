@@ -19,6 +19,7 @@ const asttype = enum {
     imagelink,
     unorderlist,
     table,
+    rawhtml,
 };
 
 pub const AstNode = union(asttype) {
@@ -36,6 +37,7 @@ pub const AstNode = union(asttype) {
     imagelink: ImageLink,
     unorderlist: UnorderList,
     table: Table,
+    rawhtml: RawHtml,
     pub fn string(self: *@This()) []const u8 {
         return switch (self.*) {
             inline else => |*s| s.string(),
@@ -622,10 +624,25 @@ pub const Table = struct {
     }
 };
 
+pub const RawHtml = struct {
+    str: String,
+    const Self = @This();
+    pub fn init(allocator: mem.Allocator) Self {
+        return .{ .str = String.init(allocator) };
+    }
+
+    pub fn string(self: *Self) []const u8 {
+        return self.str.str();
+    }
+
+    pub fn deinit(self: *Self) void {
+        self.str.deinit();
+    }
+};
+
 // todo parse2
 // - [ ] 无序列表
 // - [ ] 有序列表
-// - [ ] 内嵌HTML
 // - [ ] 脚注(footnote)
 //- [ ] 标题目录
 

@@ -47,6 +47,7 @@ fn parseStatement(self: *Parser) !AstNode {
         .TK_MINUS => try self.parseBlankLine(),
         .TK_CODEBLOCK => try self.parseCodeBlock(),
         .TK_VERTICAL => try self.parseTable(),
+        .TK_LT => try self.parseRawHtml(),
         else => try self.parseParagraph(),
     };
 
@@ -569,6 +570,25 @@ fn parseTable(self: *Parser) !AstNode {
     return .{ .table = tb };
 }
 
+//<div>
+// qqqq
+//</div>
+fn parseRawHtml(self: *Parser) !AstNode {
+    var rh = RawHtml.init(self.allocator);
+    try rh.str.concat("<");
+    self.nextToken();
+    if (self.curTokenIs(.TK_STR) and anyHtmlTag(self.cur_token.literal)) {
+        while (!self.curTokenIs(.TK_EOF) and !self.peekOtherTokenIs(self.peek_token.ty)) {
+            while (self.curTokenIs(.TK_BR)) {
+                self.nextToken();
+            }
+            try rh.str.concat(self.cur_token.literal);
+            self.nextToken();
+        }
+    }
+    return .{ .rawhtml = rh };
+}
+
 fn curTokenIs(self: *Parser, tok: TokenType) bool {
     return tok == self.cur_token.ty;
 }
@@ -590,6 +610,16 @@ fn expect(self: *Parser, tok: TokenType) !bool {
         self.nextToken();
         return true;
     } else error.SyntaxError;
+}
+
+fn anyHtmlTag(str: []const u8) bool {
+    const html_tag_list = [_][]const u8{ "div", "a", "p", "ul", "li", "ol", "dt", "dd", "span", "img", "table" };
+    for (html_tag_list) |value| {
+        if (std.mem.startsWith(u8, str, value)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 test Parser {
@@ -633,6 +663,16 @@ test Parser {
             \\| hi | wooo | hello  |
             \\
         ;
+
+        const rawhtml =
+            \\<div>
+            \\hello
+            \\
+            \\<a href="http://github.com" style="width:10px"></a>
+            \\
+            \\
+            \\</div>
+        ;
     };
     const tests = [_]TestV{
         //
@@ -656,6 +696,7 @@ test Parser {
         .{ .markdown = "[![image](/assets/img/ship.jpg)](https://github.com/Chanyon)", .html = "<p><a herf=\"https://github.com/Chanyon\"><img src=\"/assets/img/ship.jpg\" alt=\"image\"/></a></p>" },
         // .{ .markdown = TestV.unorderlist, .html = "1" },
         .{ .markdown = TestV.table, .html = "<table><thead><th style=\"text-align:left\"><p>one </p></th><th style=\"text-align:center\"><p>two </p></th><th style=\"text-align:right\"><p>three</p></th></thead><tbody><tr><td style=\"text-align:left\"><p>hi </p></td><td style=\"text-align:center\"><p>wooo </p></td><td style=\"text-align:right\"><p>hello  </p></td></tr></tbody></table>" },
+        .{ .markdown = TestV.rawhtml, .html = "<div>hello<a href=\"http://github.com\" style=\"width:10px\"></a></div>" },
     };
     inline for (tests, 0..) |item, i| {
         var lexer = Lexer.newLexer(item.markdown);
@@ -702,3 +743,4 @@ const CodeBlock = ast.CodeBlock;
 const ImageLink = ast.ImageLink;
 const UnorderList = ast.UnorderList;
 const Table = ast.Table;
+const RawHtml = ast.RawHtml;
