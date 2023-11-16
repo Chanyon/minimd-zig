@@ -20,6 +20,8 @@ const asttype = enum {
     unorderlist,
     table,
     rawhtml,
+    footlink,
+    footnote,
 };
 
 pub const AstNode = union(asttype) {
@@ -38,6 +40,8 @@ pub const AstNode = union(asttype) {
     unorderlist: UnorderList,
     table: Table,
     rawhtml: RawHtml,
+    footlink: FootLink,
+    footnote: FootNote,
     pub fn string(self: *@This()) []const u8 {
         return switch (self.*) {
             inline else => |*s| s.string(),
@@ -640,10 +644,60 @@ pub const RawHtml = struct {
     }
 };
 
+pub const FootLink = struct {
+    link: *AstNode,
+    str: String,
+    pub fn init(allocator: mem.Allocator, link: *AstNode) FootLink {
+        return .{ .str = String.init(allocator), .link = link };
+    }
+
+    pub fn string(self: *FootLink) []const u8 {
+        const fmt = std.fmt.allocPrint(std.heap.page_allocator, "<a href=\"#target-{s}\" id=\"src-{s}\">", .{ self.link.string(), self.link.string() }) catch return "";
+        defer std.heap.page_allocator.free(fmt);
+        self.str.concat(fmt) catch return "";
+        self.str.concat("<sup>[") catch return "";
+        self.str.concat(self.link.string()) catch return "";
+        self.str.concat("]</sup>") catch return "";
+        self.str.concat("</a>") catch return "";
+
+        return self.str.str();
+    }
+
+    pub fn deinit(self: *FootLink) void {
+        self.link.deinit();
+    }
+};
+
+pub const FootNote = struct {
+    link: *AstNode = undefined,
+    desc: *AstNode = undefined,
+    str: String,
+    pub fn init(alloctor: mem.Allocator) FootNote {
+        return .{ .str = String.init(alloctor) };
+    }
+
+    pub fn string(self: *FootNote) []const u8 {
+        const fmt = std.fmt.allocPrint(std.heap.page_allocator, "<a href=\"#src-{s}\" id=\"target-{s}\">[", .{ self.link.string(), self.link.string() }) catch return "";
+        defer std.heap.page_allocator.free(fmt);
+        self.str.concat(fmt) catch return "";
+        self.str.concat(self.link.string()) catch return "";
+        self.str.concat("]</a>") catch return "";
+        self.str.concat(":") catch return "";
+        self.str.concat(self.desc.string()) catch return "";
+
+        return self.str.str();
+    }
+
+    pub fn deinit(self: *FootNote) void {
+        self.link.deinit();
+        self.desc.deinit();
+        self.str.deinit();
+    }
+};
+
 // todo parse2
 // - [ ] 无序列表
 // - [ ] 有序列表
-// - [ ] 脚注(footnote)
 //- [ ] 标题目录
 
 test TreeNode {

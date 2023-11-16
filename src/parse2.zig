@@ -9,6 +9,7 @@ context: Context,
 const Context = struct {
     orderlist: bool,
     space: u8,
+    // any_footnote: bool = false,
 };
 
 fn init(lex: *Lexer, al: std.mem.Allocator) Parser {
@@ -56,7 +57,7 @@ fn parseStatement(self: *Parser) !AstNode {
 
 fn parseText(self: *Parser) !AstNode {
     var text = Text.init(self.allocator);
-    while (self.curTokenIs(.TK_STR) or self.curTokenIs(.TK_SPACE)) {
+    while (self.curTokenIs(.TK_STR) or self.curTokenIs(.TK_SPACE) or self.curTokenIs(.TK_NUM)) {
         try text.value.concat(self.cur_token.literal);
         self.nextToken();
     }
@@ -248,6 +249,7 @@ fn parseParagraph(self: *Parser) !AstNode {
             .TK_LBRACE => {
                 var link = try self.parseLink();
                 try paragraph.stmts.append(link);
+                // if (self.context.any_footnote) break;
             },
             .TK_CODE => {
                 var code = try self.parseCode();
@@ -322,6 +324,11 @@ fn parseLink(self: *Parser) !AstNode {
         //
         return self.parseIamgeLink();
     }
+    // ^1]: anything
+    if (self.curTokenIs(.TK_INSERT)) {
+        return self.parseFootNote();
+    }
+
     var link = Link.init(self.allocator);
     if (self.curTokenIs(.TK_STR)) {
         var d = try self.allocator.create(AstNode);
@@ -589,6 +596,32 @@ fn parseRawHtml(self: *Parser) !AstNode {
     return .{ .rawhtml = rh };
 }
 
+fn parseFootNote(self: *Parser) !AstNode {
+    // self.context.any_footnote = true;
+    var fnote = FootNote.init(self.allocator);
+
+    self.nextToken();
+    if (self.curTokenIs(.TK_STR) or self.curTokenIs(.TK_NUM)) {
+        var link = try self.allocator.create(AstNode);
+        link.* = try self.parseText();
+        fnote.link = link;
+
+        _ = self.expect(.TK_RBRACE, ParseError.FootNoteSyntaxError) catch |err| return err;
+        if (self.curTokenIs(.TK_COLON)) {
+            self.nextToken();
+            var desc = try self.allocator.create(AstNode);
+            desc.* = try self.parseText();
+            fnote.desc = desc;
+        } else {
+            // self.context.any_footnote = false;
+            return .{ .footlink = FootLink.init(self.allocator, link) };
+        }
+    } else return ParseError.FootNoteSyntaxError;
+
+    // self.context.any_footnote = false;
+    return .{ .footnote = fnote };
+}
+
 fn curTokenIs(self: *Parser, tok: TokenType) bool {
     return tok == self.cur_token.ty;
 }
@@ -605,11 +638,13 @@ fn peekOtherTokenIs(self: *Parser, tok: TokenType) bool {
     return false;
 }
 
-fn expect(self: *Parser, tok: TokenType) !bool {
+const ParseError = error{FootNoteSyntaxError};
+
+fn expect(self: *Parser, tok: TokenType, err: ParseError) !bool {
     if (self.cur_token.ty == tok) {
         self.nextToken();
         return true;
-    } else error.SyntaxError;
+    } else return err;
 }
 
 fn anyHtmlTag(str: []const u8) bool {
@@ -697,6 +732,7 @@ test Parser {
         // .{ .markdown = TestV.unorderlist, .html = "1" },
         .{ .markdown = TestV.table, .html = "<table><thead><th style=\"text-align:left\"><p>one </p></th><th style=\"text-align:center\"><p>two </p></th><th style=\"text-align:right\"><p>three</p></th></thead><tbody><tr><td style=\"text-align:left\"><p>hi </p></td><td style=\"text-align:center\"><p>wooo </p></td><td style=\"text-align:right\"><p>hello  </p></td></tr></tbody></table>" },
         .{ .markdown = TestV.rawhtml, .html = "<div>hello<a href=\"http://github.com\" style=\"width:10px\"></a></div>" },
+        .{ .markdown = "[^1]: content", .html = "<p><a href=\"#src-1\" id=\"target-1\">[1]</a>: content</p>" },
     };
     inline for (tests, 0..) |item, i| {
         var lexer = Lexer.newLexer(item.markdown);
@@ -744,3 +780,5 @@ const ImageLink = ast.ImageLink;
 const UnorderList = ast.UnorderList;
 const Table = ast.Table;
 const RawHtml = ast.RawHtml;
+const FootLink = ast.FootLink;
+const FootNote = ast.FootNote;
