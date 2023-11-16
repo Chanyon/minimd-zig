@@ -2,6 +2,7 @@ const std = @import("std");
 const String = @import("string").String;
 const ArrayList = std.ArrayList;
 const mem = std.mem;
+const UUID = @import("uuid").UUID;
 
 const asttype = enum {
     //zig fmt off
@@ -58,11 +59,11 @@ pub const AstNode = union(asttype) {
 pub const TreeNode = struct {
     allocator: std.mem.Allocator,
     stmts: ArrayList(AstNode),
-
+    heading_titles: ArrayList(AstNode),
     const Self = @This();
     pub fn init(al: std.mem.Allocator) TreeNode {
         const list = ArrayList(AstNode).init(al);
-        return TreeNode{ .stmts = list, .allocator = al };
+        return TreeNode{ .stmts = list, .allocator = al, .heading_titles = ArrayList(AstNode).init(al) };
     }
 
     pub fn string(self: *Self) !String {
@@ -70,6 +71,23 @@ pub const TreeNode = struct {
         for (self.stmts.items) |*node| {
             try str.concat(node.string());
         }
+        return str;
+    }
+
+    pub fn headingTitleString(self: *Self) !String {
+        var str = String.init(self.allocator);
+        try str.concat("<ul>");
+
+        for (self.heading_titles.items) |*node| {
+            try str.concat("<li>");
+            const fmt = try std.fmt.allocPrint(self.allocator, "<a herf=\"#target-{}\">", .{node.heading.uuid});
+            try str.concat(fmt);
+            try str.concat(node.heading.value.string());
+            try str.concat("</a>");
+            try str.concat("</li>");
+        }
+        try str.concat("</ul>");
+
         return str;
     }
 
@@ -82,6 +100,10 @@ pub const TreeNode = struct {
             ast.deinit();
         }
         self.stmts.deinit();
+        for (self.heading_titles.items) |*ht| {
+            ht.deinit();
+        }
+        self.heading_titles.deinit();
     }
 };
 
@@ -105,6 +127,7 @@ pub const Heading = struct {
     level: u8,
     value: *AstNode = undefined,
     str: String,
+    uuid: UUID = undefined,
 
     const Self = @This();
     pub fn init(allocator: std.mem.Allocator) Heading {
@@ -112,14 +135,12 @@ pub const Heading = struct {
     }
 
     pub fn string(self: *Self) []const u8 {
-        switch (self.level) {
-            1 => self.str.concat("<h1>") catch return "",
-            2 => self.str.concat("<h2>") catch return "",
-            3 => self.str.concat("<h3>") catch return "",
-            4 => self.str.concat("<h4>") catch return "",
-            5 => self.str.concat("<h5>") catch return "",
-            6 => self.str.concat("<h6>") catch return "",
-            else => self.str.concat("<h6>") catch return "",
+        if (self.level > 6) {
+            self.str.concat("<h6>") catch return "";
+        } else {
+            const fmt = std.fmt.allocPrint(std.heap.page_allocator, "<h{} id=\"target-{}\">", .{ self.level, self.uuid }) catch return "";
+            defer std.heap.page_allocator.free(fmt);
+            self.str.concat(fmt) catch return "";
         }
 
         self.str.concat(self.value.string()) catch return "";
@@ -698,7 +719,6 @@ pub const FootNote = struct {
 // todo parse2
 // - [ ] 无序列表
 // - [ ] 有序列表
-//- [ ] 标题目录
 
 test TreeNode {
     var tree = TreeNode.init(std.testing.allocator);

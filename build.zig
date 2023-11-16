@@ -82,6 +82,7 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
     parse2_test.addModule("string", zig_string);
+    parse2_test.addModule("uuid", uuid_module);
 
     const parse2_uint_test = b.addRunArtifact(parse2_test);
     const parse2_test_step = b.step("parse2", "test parse2");

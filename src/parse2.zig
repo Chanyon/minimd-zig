@@ -5,6 +5,7 @@ lex: *Lexer,
 cur_token: Token,
 peek_token: Token,
 context: Context,
+heading_titles: std.ArrayList(AstNode),
 
 const Context = struct {
     orderlist: bool,
@@ -20,12 +21,17 @@ fn init(lex: *Lexer, al: std.mem.Allocator) Parser {
         .cur_token = undefined,
         .peek_token = undefined,
         .context = .{ .orderlist = false, .space = 1 },
+        .heading_titles = std.ArrayList(AstNode).init(al),
     };
     p.nextToken();
     p.nextToken();
 
     return p;
 }
+
+// fn deinit(self: *Parser) void {
+//     self.heading_titles.deinit();
+// }
 
 fn nextToken(self: *Parser) void {
     self.cur_token = self.peek_token;
@@ -39,6 +45,8 @@ pub fn parser(self: *Parser) !Tree {
         try tree.addNode(stmt);
         self.nextToken();
     }
+    try tree.heading_titles.appendSlice(self.heading_titles.items);
+    self.heading_titles.clearAndFree();
     return tree;
 }
 
@@ -82,8 +90,10 @@ fn parseHeading(self: *Parser) !AstNode {
     var value = try self.allocator.create(AstNode);
     value.* = try self.parseText();
     heading.value = value;
-
-    return .{ .heading = heading };
+    heading.uuid = UUID.init();
+    var ah = .{ .heading = heading };
+    try self.heading_titles.append(ah);
+    return ah;
 }
 
 fn parseBlankLine(self: *Parser) !AstNode {
@@ -737,6 +747,7 @@ test Parser {
     inline for (tests, 0..) |item, i| {
         var lexer = Lexer.newLexer(item.markdown);
         var p = Parser.init(&lexer, allocator);
+        // defer p.deinit();
         var tree_nodes = p.parser() catch |err| switch (err) {
             error.StrongError => {
                 std.debug.print("strong stmtment syntax error", .{});
@@ -748,6 +759,12 @@ test Parser {
             },
         };
         defer tree_nodes.deinit();
+
+        if (tree_nodes.heading_titles.items.len > 0) {
+            var h = try tree_nodes.headingTitleString();
+            defer h.deinit();
+            std.debug.print("{s}\n", .{h.str()});
+        }
 
         var str = try tree_nodes.string();
         defer str.deinit();
@@ -782,3 +799,4 @@ const Table = ast.Table;
 const RawHtml = ast.RawHtml;
 const FootLink = ast.FootLink;
 const FootNote = ast.FootNote;
+const UUID = @import("uuid").UUID;
