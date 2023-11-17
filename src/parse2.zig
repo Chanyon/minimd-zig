@@ -6,11 +6,11 @@ cur_token: Token,
 peek_token: Token,
 context: Context,
 heading_titles: std.ArrayList(AstNode),
-
+footnotes: std.ArrayList(AstNode),
 const Context = struct {
     orderlist: bool,
     space: u8,
-    // any_footnote: bool = false,
+    link_id: u8 = 0,
 };
 
 fn init(lex: *Lexer, al: std.mem.Allocator) Parser {
@@ -22,6 +22,7 @@ fn init(lex: *Lexer, al: std.mem.Allocator) Parser {
         .peek_token = undefined,
         .context = .{ .orderlist = false, .space = 1 },
         .heading_titles = std.ArrayList(AstNode).init(al),
+        .footnotes = std.ArrayList(AstNode).init(al),
     };
     p.nextToken();
     p.nextToken();
@@ -47,6 +48,8 @@ pub fn parser(self: *Parser) !Tree {
     }
     try tree.heading_titles.appendSlice(self.heading_titles.items);
     self.heading_titles.clearAndFree();
+    try tree.footnotes.appendSlice(self.footnotes.items);
+    self.footnotes.clearAndFree();
     return tree;
 }
 
@@ -259,7 +262,6 @@ fn parseParagraph(self: *Parser) !AstNode {
             .TK_LBRACE => {
                 var link = try self.parseLink();
                 try paragraph.stmts.append(link);
-                // if (self.context.any_footnote) break;
             },
             .TK_CODE => {
                 var code = try self.parseCode();
@@ -334,12 +336,9 @@ fn parseLink(self: *Parser) !AstNode {
         //
         return self.parseIamgeLink();
     }
-    // ^1]: anything
-    if (self.curTokenIs(.TK_INSERT)) {
-        return self.parseFootNote();
-    }
-
+    self.context.link_id += 1;
     var link = Link.init(self.allocator);
+    link.id = self.context.link_id;
     if (self.curTokenIs(.TK_STR)) {
         var d = try self.allocator.create(AstNode);
         d.* = try self.parseText();
@@ -354,13 +353,23 @@ fn parseLink(self: *Parser) !AstNode {
         var h = try self.allocator.create(AstNode);
         h.* = try self.parseText();
         link.herf = h;
+        // "
+        if (self.curTokenIs(.TK_QUOTE)) {
+            self.nextToken();
+            var tip = try self.allocator.create(AstNode);
+            tip.* = try self.parseText();
+            link.link_tip = tip;
+
+            _ = self.expect(.TK_QUOTE, ParseError.FootNoteSyntaxError) catch |err| return err;
+        }
     } else {
         return error.LinkSyntaxError;
     }
     //skip `)`
     self.nextToken();
-
-    return .{ .link = link };
+    const l = .{ .link = link };
+    try self.footnotes.append(l);
+    return l;
 }
 
 // [![image](/assets/img/ship.jpg)](https://github.com/Chanyon)
@@ -606,32 +615,6 @@ fn parseRawHtml(self: *Parser) !AstNode {
     return .{ .rawhtml = rh };
 }
 
-fn parseFootNote(self: *Parser) !AstNode {
-    // self.context.any_footnote = true;
-    var fnote = FootNote.init(self.allocator);
-
-    self.nextToken();
-    if (self.curTokenIs(.TK_STR) or self.curTokenIs(.TK_NUM)) {
-        var link = try self.allocator.create(AstNode);
-        link.* = try self.parseText();
-        fnote.link = link;
-
-        _ = self.expect(.TK_RBRACE, ParseError.FootNoteSyntaxError) catch |err| return err;
-        if (self.curTokenIs(.TK_COLON)) {
-            self.nextToken();
-            var desc = try self.allocator.create(AstNode);
-            desc.* = try self.parseText();
-            fnote.desc = desc;
-        } else {
-            // self.context.any_footnote = false;
-            return .{ .footlink = FootLink.init(self.allocator, link) };
-        }
-    } else return ParseError.FootNoteSyntaxError;
-
-    // self.context.any_footnote = false;
-    return .{ .footnote = fnote };
-}
-
 fn curTokenIs(self: *Parser, tok: TokenType) bool {
     return tok == self.cur_token.ty;
 }
@@ -731,8 +714,9 @@ test Parser {
         .{ .markdown = "~~hi~~---", .html = "<p><s>hi</s></p><hr/>" },
         .{ .markdown = TestV.tasks, .html = "<section><div><input type=\"checkbox\" checked><p style=\"display:inline-block\">&nbsp;todo list\n</p></input></div><div><input type=\"checkbox\"><p style=\"display:inline-block\">&nbsp;list2\n</p></input></div><div><input type=\"checkbox\" checked><p style=\"display:inline-block\">&nbsp;list3\n</p></input></div></section>" },
         .{ .markdown = "- [ ] ***hello***", .html = "<section><div><input type=\"checkbox\"><p style=\"display:inline-block\">&nbsp;<strong><em>hello</em></strong></p></input></div></section>" },
-        .{ .markdown = "[hi](https://github.com/)", .html = "<p><a herf=\"https://github.com/\">hi</a></p>" },
-        .{ .markdown = "\ntext page\\_allocator\n~~nihao~~[link](link)`code`", .html = "<p>text page_allocator\n<s>nihao</s><a herf=\"link\">link</a><code>code</code></p>" },
+        .{ .markdown = "[hi](https://github.com/)", .html = "<p><a href=\"https://github.com/\">hi</a><sup>[1]</sup></p>" },
+        .{ .markdown = "[hi](https://github.com/ \"Github\")", .html = "<p><a href=\"https://github.com/\">hi</a><sup>[1]</sup></p>" },
+        .{ .markdown = "\ntext page\\_allocator\n~~nihao~~[link](link)`code`", .html = "<p>text page_allocator\n<s>nihao</s><a href=\"#link\">link</a><sup>[1]</sup><code>code</code></p>" },
         .{ .markdown = "`call{}`", .html = "<p><code>call{}</code></p>" },
         .{ .markdown = "![foo bar](/path/to/train.jpg)", .html = "<p><img src=\"/path/to/train.jpg\" alt=\"foo bar\" title=\"\"/></p>" },
         .{ .markdown = "hi![foo bar](/path/to/train.jpg)", .html = "<p>hi<img src=\"/path/to/train.jpg\" alt=\"foo bar\" title=\"\"/></p>" },
@@ -742,7 +726,6 @@ test Parser {
         // .{ .markdown = TestV.unorderlist, .html = "1" },
         .{ .markdown = TestV.table, .html = "<table><thead><th style=\"text-align:left\"><p>one </p></th><th style=\"text-align:center\"><p>two </p></th><th style=\"text-align:right\"><p>three</p></th></thead><tbody><tr><td style=\"text-align:left\"><p>hi </p></td><td style=\"text-align:center\"><p>wooo </p></td><td style=\"text-align:right\"><p>hello  </p></td></tr></tbody></table>" },
         .{ .markdown = TestV.rawhtml, .html = "<div>hello<a href=\"http://github.com\" style=\"width:10px\"></a></div>" },
-        .{ .markdown = "[^1]: content", .html = "<p><a href=\"#src-1\" id=\"target-1\">[1]</a>: content</p>" },
     };
     inline for (tests, 0..) |item, i| {
         var lexer = Lexer.newLexer(item.markdown);
@@ -762,6 +745,12 @@ test Parser {
 
         if (tree_nodes.heading_titles.items.len > 0) {
             var h = try tree_nodes.headingTitleString();
+            defer h.deinit();
+            std.debug.print("{s}\n", .{h.str()});
+        }
+
+        if (tree_nodes.footnotes.items.len > 0) {
+            var h = try tree_nodes.footnoteString();
             defer h.deinit();
             std.debug.print("{s}\n", .{h.str()});
         }
@@ -797,6 +786,4 @@ const ImageLink = ast.ImageLink;
 const UnorderList = ast.UnorderList;
 const Table = ast.Table;
 const RawHtml = ast.RawHtml;
-const FootLink = ast.FootLink;
-const FootNote = ast.FootNote;
 const UUID = @import("uuid").UUID;

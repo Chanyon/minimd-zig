@@ -21,8 +21,6 @@ const asttype = enum {
     unorderlist,
     table,
     rawhtml,
-    footlink,
-    footnote,
 };
 
 pub const AstNode = union(asttype) {
@@ -41,8 +39,6 @@ pub const AstNode = union(asttype) {
     unorderlist: UnorderList,
     table: Table,
     rawhtml: RawHtml,
-    footlink: FootLink,
-    footnote: FootNote,
     pub fn string(self: *@This()) []const u8 {
         return switch (self.*) {
             inline else => |*s| s.string(),
@@ -60,10 +56,16 @@ pub const TreeNode = struct {
     allocator: std.mem.Allocator,
     stmts: ArrayList(AstNode),
     heading_titles: ArrayList(AstNode),
+    footnotes: ArrayList(AstNode),
     const Self = @This();
     pub fn init(al: std.mem.Allocator) TreeNode {
         const list = ArrayList(AstNode).init(al);
-        return TreeNode{ .stmts = list, .allocator = al, .heading_titles = ArrayList(AstNode).init(al) };
+        return TreeNode{
+            .stmts = list,
+            .allocator = al,
+            .heading_titles = ArrayList(AstNode).init(al),
+            .footnotes = ArrayList(AstNode).init(al),
+        };
     }
 
     pub fn string(self: *Self) !String {
@@ -91,6 +93,31 @@ pub const TreeNode = struct {
         return str;
     }
 
+    pub fn footnoteString(self: *Self) !String {
+        var str = String.init(self.allocator);
+
+        if (self.footnotes.items.len > 0) {
+            try str.concat("<div>");
+            for (self.footnotes.items) |*f| {
+                try str.concat("<p>");
+                try str.concat("<span>[");
+                const id_fmt = try std.fmt.allocPrint(self.allocator, "{}", .{f.link.id});
+                try str.concat(id_fmt);
+                try str.concat("]</span>: ");
+                if (f.link.link_tip) |tip| {
+                    try str.concat(tip.string());
+                    try str.concat(":");
+                }
+                try str.concat(f.link.herf.string());
+
+                try str.concat("</p>");
+            }
+            try str.concat("</div>");
+        }
+
+        return str;
+    }
+
     pub fn addNode(self: *Self, node: AstNode) !void {
         try self.stmts.append(node);
     }
@@ -104,6 +131,10 @@ pub const TreeNode = struct {
             ht.deinit();
         }
         self.heading_titles.deinit();
+        for (self.footnotes.items) |*f| {
+            f.deinit();
+        }
+        self.footnotes.deinit();
     }
 };
 
@@ -308,6 +339,8 @@ pub const TaskList = struct {
 pub const Link = struct {
     herf: *AstNode = undefined, //text
     link_des: *AstNode = undefined,
+    link_tip: ?*AstNode = null,
+    id: u8 = 0,
     str: String,
     const Self = @This();
     pub fn init(allocator: mem.Allocator) Link {
@@ -315,11 +348,26 @@ pub const Link = struct {
     }
 
     pub fn string(self: *Self) []const u8 {
-        self.str.concat("<a herf=\"") catch return "";
-        self.str.concat(self.herf.string()) catch return "";
+        self.str.concat("<a href=\"") catch return "";
+
+        const href = std.mem.trimRight(u8, self.herf.string(), " ");
+        if (std.mem.startsWith(u8, href, "http")) {
+            self.str.concat(href) catch return "";
+        } else {
+            self.str.concat("#") catch return "";
+            self.str.concat(href) catch return "";
+        }
         self.str.concat("\">") catch return "";
         self.str.concat(self.link_des.string()) catch return "";
         self.str.concat("</a>") catch return "";
+
+        self.str.concat("<sup>") catch return "";
+        self.str.concat("[") catch return "";
+        const id_fmt = std.fmt.allocPrint(std.heap.page_allocator, "{}", .{self.id}) catch return "";
+        defer std.heap.page_allocator.free(id_fmt);
+        self.str.concat(id_fmt) catch return "";
+        self.str.concat("]</sup>") catch return "";
+
         return self.str.str();
     }
     pub fn deinit(self: *Self) void {
@@ -661,57 +709,6 @@ pub const RawHtml = struct {
     }
 
     pub fn deinit(self: *Self) void {
-        self.str.deinit();
-    }
-};
-
-pub const FootLink = struct {
-    link: *AstNode,
-    str: String,
-    pub fn init(allocator: mem.Allocator, link: *AstNode) FootLink {
-        return .{ .str = String.init(allocator), .link = link };
-    }
-
-    pub fn string(self: *FootLink) []const u8 {
-        const fmt = std.fmt.allocPrint(std.heap.page_allocator, "<a href=\"#target-{s}\" id=\"src-{s}\">", .{ self.link.string(), self.link.string() }) catch return "";
-        defer std.heap.page_allocator.free(fmt);
-        self.str.concat(fmt) catch return "";
-        self.str.concat("<sup>[") catch return "";
-        self.str.concat(self.link.string()) catch return "";
-        self.str.concat("]</sup>") catch return "";
-        self.str.concat("</a>") catch return "";
-
-        return self.str.str();
-    }
-
-    pub fn deinit(self: *FootLink) void {
-        self.link.deinit();
-    }
-};
-
-pub const FootNote = struct {
-    link: *AstNode = undefined,
-    desc: *AstNode = undefined,
-    str: String,
-    pub fn init(alloctor: mem.Allocator) FootNote {
-        return .{ .str = String.init(alloctor) };
-    }
-
-    pub fn string(self: *FootNote) []const u8 {
-        const fmt = std.fmt.allocPrint(std.heap.page_allocator, "<a href=\"#src-{s}\" id=\"target-{s}\">[", .{ self.link.string(), self.link.string() }) catch return "";
-        defer std.heap.page_allocator.free(fmt);
-        self.str.concat(fmt) catch return "";
-        self.str.concat(self.link.string()) catch return "";
-        self.str.concat("]</a>") catch return "";
-        self.str.concat(":") catch return "";
-        self.str.concat(self.desc.string()) catch return "";
-
-        return self.str.str();
-    }
-
-    pub fn deinit(self: *FootNote) void {
-        self.link.deinit();
-        self.desc.deinit();
         self.str.deinit();
     }
 };
