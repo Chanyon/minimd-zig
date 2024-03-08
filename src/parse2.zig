@@ -510,7 +510,7 @@ fn parseOrderList(self: *Parser) !AstNode {
         try unorder_list.stmts.append(current_item);
 
         if (self.cur_token.ty == .TK_NUM_DOT) current_item_type = .order;
-        if (self.peek_token.ty == .TK_MINUS) current_item_type = .unorder;
+        if (self.cur_token.ty == .TK_MINUS or self.peek_token.ty == .TK_MINUS) current_item_type = .unorder;
 
         // std.debug.print("{s}/{}-##############\n", .{ self.cur_token.literal, self.cur_token.ty });
         self.nextToken(); //skip - / 1.

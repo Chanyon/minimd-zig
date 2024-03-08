@@ -1,7 +1,7 @@
 ### simple-markdown-parse
 ---
-### 简单实现
-- 标题语法
+### Markdown Grammar
+- headline
   ```
     # heading1 => <h1></h1>
     ## heading2 => <h2></h2>
@@ -10,19 +10,19 @@
     ##### heading5 => <h5></h5>
     ###### heading6 => <h6></h6>
   ```
-- 段落语法
+- paragraph
   ```
     hello world
     <p>hello world</p>
   ```
-- 强调语法
+- strong
   ```
     **test** => <strong>test</strong>
     *test* => <em>test</em>
     ***test*** => <strong><em>test</em></strong>
     __hello__ => <strong>test</strong>
   ```
-- 引用语法
+- blockquote
   ```
     > hello => <blockquote>hello</blockquote>
 
@@ -31,16 +31,16 @@
     >> world 
     => <blockquote>hello<blockquote>world</blockquote></blockquote> 
   ```
-- 分隔线语法
+- separation line
   ```
     --- => <hr>
   ```
-- 链接语法
+- link
   ```
     [link](https://github.com/) => <a href="https://github.com/">link</a>
     <https://github.com> => <a href="https://github.com/">https://github.com</a>
   ```
-- 图片语法
+- image
   ```
     ![img](/assets/img/philly-magic-garden.jpg)
     => <img src="/assets/img/philly-magic-garden.jpg" alt="img">
@@ -48,7 +48,7 @@
     [![image](/assets/img/ship.jpg)](https://github.com/Chanyon)
     => <a href="https://github.com/Chanyon"><img src="/assets/img/ship.jpg" alt="image"></a>"
   ```
-- 删除线
+- delete line
   ```
     ~~test~~ => <p><s>test</s></p>
     hello~~test~~world => <p>hello<s>test</s>world</p>
@@ -108,7 +108,7 @@
   2. test5
   3. test6
   ```
-- 转义字符
+- escape characters
   ```
    \[\]
    \<test\>
