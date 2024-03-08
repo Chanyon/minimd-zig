@@ -51,7 +51,7 @@ pub const AstNode = union(asttype) {
         }
     }
 };
-
+// Markdown
 pub const TreeNode = struct {
     allocator: std.mem.Allocator,
     stmts: ArrayList(AstNode),
@@ -514,7 +514,10 @@ pub const UnorderList = struct {
         stmts: ArrayList(AstNode),
         str: String,
         pub fn init(allocator: mem.Allocator) Item {
-            return .{ .stmts = ArrayList(AstNode).init(allocator), .str = String.init(allocator) };
+            return .{
+                .stmts = ArrayList(AstNode).init(allocator),
+                .str = String.init(allocator),
+            };
         }
 
         pub fn string(self: *Item) []const u8 {
@@ -533,65 +536,116 @@ pub const UnorderList = struct {
     };
     stmts: ArrayList(Item),
     str: String,
+    allocator: mem.Allocator,
     const Self = @This();
+
     pub fn init(allocator: mem.Allocator) Self {
-        return .{ .stmts = ArrayList(Item).init(allocator), .str = String.init(allocator) };
+        return .{
+            .stmts = ArrayList(Item).init(allocator),
+            .str = String.init(allocator),
+            .allocator = allocator,
+        };
     }
-    // \\- hello 1
-    // \\   - hi 3
-    // \\     - qo 5
-    // \\     - qp 5
-    // \\       - dcy 7
-    // \\         - cheng 9
-    // \\     - qq  5
-    // \\   - oi 3
-    // \\- kkkk 1
-    // \\- world 1
 
-    // case 2
-    // - o
-    //   - t
-    //     - f
     pub fn string(self: *Self) []const u8 {
-        var idx: usize = 1;
-        _ = idx;
-        const len = self.stmts.items.len;
-        _ = len;
-        self.str.concat("<ul>") catch return "";
-        self.str.concat("<li>") catch return "";
-        self.str.concat(self.stmts.items[0].string()) catch return "";
-        self.str.concat("</li>") catch return "";
-
-        var entry_list: ArrayList(usize) = ArrayList(usize).init(std.heap.page_allocator);
-        defer entry_list.deinit();
-
-        // while (idx < len) : (idx += 1) {
-        //     if (self.stmts.items[idx].space == self.stmts.items[idx - 1].space) {
-        //         self.str.concat("<li>") catch return "";
-        //         self.str.concat(self.stmts.items[idx].string()) catch return "";
-        //         self.str.concat("</li>") catch return "";
-        //     }
-        //     if (self.stmts.items[idx].space > self.stmts.items[idx - 1].space) {
-        //         entry_list.append(idx) catch unreachable;
-
-        //         self.str.concat("<ul>") catch return "";
-        //         self.str.concat("<li>") catch return "";
-        //         self.str.concat(self.stmts.items[idx].string()) catch return "";
-        //         self.str.concat("</li>") catch return "";
-        //     }
-
-        //     if (self.stmts.items[idx].space < self.stmts.items[idx - 1].space) {
-        //         if (self.stmts.items[idx].space == self.stmts.items[0].space) {
-        //             self.str.concat("</ul>") catch return "";
-        //             self.str.concat("<li>") catch return "";
-        //             self.str.concat(self.stmts.items[idx].string()) catch return "";
-        //             self.str.concat("</li>") catch return "";
-        //         }
-        //     }
-        // }
-        self.str.concat("</ul>") catch return "";
+        var unorderlist = reworkUnorderStruct(std.heap.page_allocator, self.stmts) catch return "";
+        defer unorderlist.deinit();
+        const list_len = unorderlist.root.items.len;
+        if (list_len > 0) {
+            self.str.concat("<ul>") catch return "";
+            for (unorderlist.root.items) |item| {
+                self.render0(item) catch return "";
+            }
+            self.str.concat("</ul>") catch return "";
+        }
 
         return self.str.str();
+    }
+
+    fn reworkUnorderStruct(page: mem.Allocator, stmts: ArrayList(Item)) !UnorderListNode {
+        var list = UnorderListNode.init(page);
+        const first = stmts.items[0];
+        var parent_node: *Node = try page.create(Node);
+        parent_node.*.value = first;
+        parent_node.*.parent = null;
+        parent_node.*.childrens = null;
+        try list.root.append(parent_node);
+
+        //- a
+        //  - b
+        //    - c
+        //  - d
+        //- e
+
+        const first_space = first.space;
+        var idx: usize = 1;
+        const len = stmts.items.len;
+        var node: *Node = undefined;
+        while (idx < len) : (idx += 1) {
+            const current_space = stmts.items[idx].space;
+            const prev_space = stmts.items[idx - 1].space;
+            var temp_node: ?*Node = null;
+            node = try page.create(Node);
+            node.*.childrens = ArrayList(*Node).init(page);
+            node.*.parent = parent_node;
+            if (current_space > prev_space) {
+                node.*.value = stmts.items[idx];
+                if (parent_node.childrens) |*children| {
+                    try children.append(node);
+                } else {
+                    parent_node.*.childrens = ArrayList(*Node).init(page);
+                    try parent_node.*.childrens.?.append(node);
+                }
+            }
+            // - a
+            //   - b
+            //     - c
+            //   - d
+            if (current_space < prev_space and current_space != first_space) {
+                temp_node = parent_node.parent;
+                while (temp_node) |n| : (temp_node = temp_node.?.parent) {
+                    if (current_space > n.value.space) {
+                        node.*.value = stmts.items[idx];
+                        try n.childrens.?.append(node);
+
+                        break;
+                    }
+                }
+            }
+
+            if (current_space == prev_space and current_space != first_space) {
+                temp_node = parent_node.parent;
+                while (temp_node) |n| : (temp_node = temp_node.?.parent) {
+                    if (current_space > n.value.space) {
+                        node.*.value = stmts.items[idx];
+                        try n.childrens.?.append(node);
+
+                        break;
+                    }
+                }
+            }
+
+            if (current_space == first_space) {
+                node.*.value = stmts.items[idx];
+
+                try list.root.append(node);
+            }
+            parent_node = node;
+        }
+        return list;
+    }
+
+    fn render0(self: *Self, child: *Node) !void {
+        try self.str.concat("<li>");
+        try self.str.concat(child.value.string());
+        if (child.childrens.?.items.len > 0) {
+            try self.str.concat("<ul>");
+            for (child.childrens.?.items) |it| {
+                try self.render0(it);
+            }
+            try self.str.concat("</ul>");
+        }
+        try self.str.concat("</li>");
     }
 
     fn deinit(self: *Self) void {
@@ -713,8 +767,11 @@ pub const RawHtml = struct {
     }
 };
 
+const utils = @import("./utils.zig");
+const UnorderListNode = utils.UnorderListNode;
+const Node = utils.Node;
+
 // todo parse2
-// - [ ] 无序列表
 // - [ ] 有序列表
 
 test TreeNode {
