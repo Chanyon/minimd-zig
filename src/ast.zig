@@ -509,8 +509,13 @@ pub const Images = struct {
 };
 
 pub const UnorderList = struct {
+    pub const ListType = enum {
+        order,
+        unorder,
+    };
     pub const Item = struct {
         space: u8 = 1,
+        list_type: ListType = .unorder,
         stmts: ArrayList(AstNode),
         str: String,
         pub fn init(allocator: mem.Allocator) Item {
@@ -552,11 +557,22 @@ pub const UnorderList = struct {
         defer unorderlist.deinit();
         const list_len = unorderlist.root.items.len;
         if (list_len > 0) {
-            self.str.concat("<ul>") catch return "";
+            const first_type = unorderlist.root.items[0].value.list_type;
+            if (first_type == .unorder) {
+                self.str.concat("<ul>") catch return "";
+            } else {
+                self.str.concat("<ol>") catch return "";
+            }
+
             for (unorderlist.root.items) |item| {
                 self.render0(item) catch return "";
             }
-            self.str.concat("</ul>") catch return "";
+
+            if (first_type == .unorder) {
+                self.str.concat("</ul>") catch return "";
+            } else {
+                self.str.concat("</ol>") catch return "";
+            }
         }
 
         return self.str.str();
@@ -638,12 +654,25 @@ pub const UnorderList = struct {
     fn render0(self: *Self, child: *Node) !void {
         try self.str.concat("<li>");
         try self.str.concat(child.value.string());
-        if (child.childrens.?.items.len > 0) {
-            try self.str.concat("<ul>");
-            for (child.childrens.?.items) |it| {
-                try self.render0(it);
+        if (child.childrens) |c| {
+            if (c.items.len > 0) {
+                const child_first_type = c.items[0].value.list_type;
+                if (child_first_type == .unorder) {
+                    try self.str.concat("<ul>");
+                } else {
+                    try self.str.concat("<ol>");
+                }
+
+                for (c.items) |it| {
+                    try self.render0(it);
+                }
+
+                if (child_first_type == .unorder) {
+                    try self.str.concat("</ul>");
+                } else {
+                    try self.str.concat("</ol>");
+                }
             }
-            try self.str.concat("</ul>");
         }
         try self.str.concat("</li>");
     }
@@ -772,7 +801,7 @@ const UnorderListNode = utils.UnorderListNode;
 const Node = utils.Node;
 
 // todo parse2
-// - [ ] 有序列表
+// renane UnorderList struct
 
 test TreeNode {
     var tree = TreeNode.init(std.testing.allocator);

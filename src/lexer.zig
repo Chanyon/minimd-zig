@@ -154,7 +154,17 @@ pub const Lexer = struct {
         }
         if (eql(u8, self.ch, ".")) {
             self.readChar();
+            var is_num: bool = false;
+            while (self.isdigit(self.ch)) {
+                is_num = true;
+                self.readChar();
+            }
+
             num = self.source[pos - 1 .. self.read_pos - 1];
+            if (is_num) {
+                return token.newToken(.TK_NUM, num, null);
+            }
+
             return token.newToken(.TK_NUM_DOT, num, null);
         }
         num = self.source[pos - 1 .. self.read_pos - 1];
@@ -399,7 +409,7 @@ test "lexer ^" {
 }
 
 test "lexer 1." {
-    var lexer = Lexer.newLexer("111. ###");
+    var lexer = Lexer.newLexer("111. ddd\n2. cccc\n");
     const tk = lexer.nextToken();
     try std.testing.expect(eql(u8, tk.literal, "111."));
     try std.testing.expect(tk.ty == .TK_NUM_DOT);
@@ -409,6 +419,13 @@ test "lexer number" {
     var lexer = Lexer.newLexer("111string");
     const tk = lexer.nextToken();
     try std.testing.expect(eql(u8, tk.literal, "111"));
+    try std.testing.expect(tk.ty == .TK_NUM);
+}
+
+test "lexer number2" {
+    var lexer = Lexer.newLexer("111.2223string");
+    const tk = lexer.nextToken();
+    try std.testing.expect(eql(u8, tk.literal, "111.2223"));
     try std.testing.expect(tk.ty == .TK_NUM);
 }
 

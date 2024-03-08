@@ -11,6 +11,7 @@ const Context = struct {
     orderlist: bool,
     space: u8,
     link_id: u8 = 0,
+    list_type: UnorderList.ListType = .unorder,
 };
 
 fn init(lex: *Lexer, al: std.mem.Allocator) Parser {
@@ -60,6 +61,10 @@ fn parseStatement(self: *Parser) !AstNode {
         .TK_CODEBLOCK => try self.parseCodeBlock(),
         .TK_VERTICAL => try self.parseTable(),
         .TK_LT => try self.parseRawHtml(),
+        .TK_NUM_DOT => {
+            self.context.list_type = .order;
+            return try self.parseOrderList();
+        },
         else => try self.parseParagraph(),
     };
 
@@ -132,6 +137,7 @@ fn parseBlankLine(self: *Parser) !AstNode {
             }
             return .{ .task_list = task };
         } else if (self.curTokenIs(.TK_SPACE)) {
+            self.context.list_type = .unorder;
             return try self.parseOrderList();
         } else {
             return error.TaskOrUnorderListError;
@@ -459,16 +465,22 @@ fn parseOrderList(self: *Parser) !AstNode {
 
     var space: u8 = 1;
     var current_item: UnorderList.Item = undefined;
+    var current_item_type: UnorderList.ListType = self.context.list_type;
+
     // skip `space`
     while (!self.curTokenIs(.TK_EOF) and !self.peekOtherTokenIs(self.peek_token.ty)) {
         self.nextToken();
+
         current_item = UnorderList.Item.init(self.allocator);
+        current_item.list_type = current_item_type;
         current_item.space = space;
-        while (!self.curTokenIs(.TK_EOF) and !self.curTokenIs(.TK_MINUS) and !self.peekOtherTokenIs(self.peek_token.ty)) {
+
+        while (!self.curTokenIs(.TK_EOF) and (!self.curTokenIs(.TK_MINUS) and !self.curTokenIs(.TK_NUM_DOT)) and !self.peekOtherTokenIs(self.peek_token.ty)) {
             switch (self.cur_token.ty) {
                 .TK_STR => {
                     try current_item.stmts.append(try self.parseText());
                     space = 1;
+                    // std.debug.print(">>>>>>({s})-{any}\n", .{ self.cur_token.literal, self.peek_token.ty });
                 },
                 .TK_ASTERISKS => {
                     try current_item.stmts.append(try self.parseStrong());
@@ -495,10 +507,13 @@ fn parseOrderList(self: *Parser) !AstNode {
                 },
             }
         }
-        // std.debug.print("{}-##############\n", .{current_item.space});
         try unorder_list.stmts.append(current_item);
 
-        self.nextToken(); //skip -
+        if (self.cur_token.ty == .TK_NUM_DOT) current_item_type = .order;
+        if (self.peek_token.ty == .TK_MINUS) current_item_type = .unorder;
+
+        // std.debug.print("{s}/{}-##############\n", .{ self.cur_token.literal, self.cur_token.ty });
+        self.nextToken(); //skip - / 1.
     }
 
     return .{ .unorderlist = unorder_list };
@@ -678,6 +693,17 @@ test Parser {
             \\- world
         ;
 
+        const orderlylist =
+            \\1. First item
+            \\2. Second item
+            \\   - hi
+            \\   - ho
+            \\3. Third item
+            \\4. Indented item
+            \\1. Indented item
+            \\2. Fourth item
+        ;
+
         const table =
             \\| one | two | three|
             \\| :--- | :---:| ---:|
@@ -717,6 +743,7 @@ test Parser {
         .{ .markdown = "```rust\n fn();```", .html = "<pre><code class=\"language-rust\"> fn();</code></pre>" },
         .{ .markdown = "[![image](/assets/img/ship.jpg)](https://github.com/Chanyon)", .html = "<p><a herf=\"https://github.com/Chanyon\"><img src=\"/assets/img/ship.jpg\" alt=\"image\"/></a></p>" },
         .{ .markdown = TestV.unorderlist, .html = "<ul><li>hello\n<ul><li>hi\n<ul><li>qo\n</li><li>qp\n<ul><li>dcy\n<ul><li>cheng\n</li><li>qq\n</li></ul></li></ul></li></ul></li><li>oi\n</li></ul></li><li>kkkk\n</li><li>world</li></ul>" },
+        .{ .markdown = TestV.orderlylist, .html = "<ol><li>First item\n</li><li>Second item\n<ul><li>hi\n</li><li>ho\n</li></ul></li><li>Third item\n</li><li>Indented item\n</li><li>Indented item\n</li><li>Fourth item</li></ol>" },
         .{ .markdown = TestV.table, .html = "<table><thead><th style=\"text-align:left\"><p>one </p></th><th style=\"text-align:center\"><p>two </p></th><th style=\"text-align:right\"><p>three</p></th></thead><tbody><tr><td style=\"text-align:left\"><p>hi </p></td><td style=\"text-align:center\"><p>wooo </p></td><td style=\"text-align:right\"><p>hello  </p></td></tr></tbody></table>" },
         .{ .markdown = TestV.rawhtml, .html = "<div>hello<a href=\"http://github.com\" style=\"width:10px\"></a></div>" },
     };
