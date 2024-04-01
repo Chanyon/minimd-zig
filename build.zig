@@ -7,32 +7,28 @@ pub fn build(b: *std.Build) !void {
     const optimize = b.standardOptimizeOption(.{});
 
     const uuid_module = b.dependency("uuid", .{}).module("uuid");
-    // const md_module = b.addModule("minimdzig", .{
-    //     .source_file = .{ .path = "src/lib.zig" },
-    //     .dependencies = &.{.{ .name = "uuid", .module = uuid_module }},
-    // });
-    // _ = md_module;
     const zig_string = b.dependency("string", .{}).module("string");
 
     const module = b.createModule(.{
-        .source_file = .{ .path = "src/lib.zig" },
-        .dependencies = &.{
+        .root_source_file = .{ .path = "src/lib.zig" },
+        .imports = &.{
             //
             .{ .name = "uuid", .module = uuid_module },
             .{ .name = "string", .module = zig_string },
         },
     });
 
-    try b.modules.put(b.dupe("minimdzig"), module);
+    try b.modules.put(b.dupe("minimd"), module);
 
     const lib = b.addSharedLibrary(.{
-        .name = "minimdzig",
+        .name = "minimd",
         .root_source_file = .{ .path = "src/lib.zig" },
         .target = target,
         .optimize = optimize,
     });
-    lib.addModule("uuid", uuid_module);
-    lib.addModule("string", zig_string);
+
+    lib.root_module.addImport("string", zig_string);
+    lib.root_module.addImport("uuid", uuid_module);
 
     // zig build test_iter
     const iter_test = b.addTest(.{
@@ -60,7 +56,7 @@ pub fn build(b: *std.Build) !void {
         .target = target,
         .optimize = optimize,
     });
-    parser_test.addModule("uuid", uuid_module);
+    parser_test.root_module.addImport("uuid", uuid_module);
 
     const run_uint_test3 = b.addRunArtifact(parser_test);
     const parser_step = b.step("test_parse", "test parser");
@@ -71,7 +67,7 @@ pub fn build(b: *std.Build) !void {
         .target = target,
         .optimize = optimize,
     });
-    ast_test.addModule("string", zig_string);
+    ast_test.root_module.addImport("string", zig_string);
     const ast_unit_test = b.addRunArtifact(ast_test);
     const ast_test_step = b.step("ast", "test ast");
     ast_test_step.dependOn(&ast_unit_test.step);
@@ -81,8 +77,8 @@ pub fn build(b: *std.Build) !void {
         .target = target,
         .optimize = optimize,
     });
-    parse2_test.addModule("string", zig_string);
-    parse2_test.addModule("uuid", uuid_module);
+    parse2_test.root_module.addImport("string", zig_string);
+    parse2_test.root_module.addImport("uuid", uuid_module);
 
     const parse2_uint_test = b.addRunArtifact(parse2_test);
     const parse2_test_step = b.step("parse2", "test parse2");
@@ -93,7 +89,7 @@ pub fn build(b: *std.Build) !void {
         .target = target,
         .optimize = optimize,
     });
-    main_tests.addModule("uuid", uuid_module);
+    main_tests.root_module.addImport("uuid", uuid_module);
 
     const run_uint_test4 = b.addRunArtifact(main_tests);
     const test_step = b.step("test", "Run library tests");
