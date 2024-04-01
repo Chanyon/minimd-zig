@@ -159,7 +159,7 @@ pub const Parser = struct {
             try self.out.append("</p>");
         } else {
             self.nextToken(); //skip space
-            const parse_test = parseTest{};
+            const parse_test = parseTest{ .is_test = true };
             var id: Type(parse_test.is_test) = undefined;
             if (parse_test.is_test) {
                 var rng = std.rand.DefaultPrng.init(100);
@@ -444,7 +444,7 @@ pub const Parser = struct {
         var orderdlist: bool = false;
         var is_space: bool = false;
         var is_task: bool = false;
-        var out_len = self.out.items.len;
+        const out_len = self.out.items.len;
 
         if (self.curTokenIs(.TK_SPACE)) {
             orderdlist = true;
@@ -1269,7 +1269,7 @@ test "parser text and strong **Bold** 3" {
     defer gpa.deinit();
     const text =
         \\hello**test
-        \\**world!
+        \\**world\!
         \\
     ;
     var lexer = Lexer.newLexer(text);
@@ -1926,7 +1926,7 @@ test "parser multiple line \\" {
         \\  **text** \
         \\  hello
         \\  - B2 \
-        \\    world! \
+        \\    world\! \
         \\    dcy
         \\- C3
     ;
