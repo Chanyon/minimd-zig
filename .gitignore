@@ -1,5 +1,6 @@
 .vscode/
 tests/
 zig-cache/
+.zig-cache/
 zig-out/
 docs

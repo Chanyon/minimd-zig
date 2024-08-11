@@ -10,7 +10,7 @@ pub fn build(b: *std.Build) !void {
     const zig_string = b.dependency("string", .{}).module("string");
 
     const module = b.createModule(.{
-        .root_source_file = .{ .path = "src/lib.zig" },
+        .root_source_file = b.path("src/lib.zig"),
         .imports = &.{
             //
             .{ .name = "uuid", .module = uuid_module },
@@ -22,7 +22,7 @@ pub fn build(b: *std.Build) !void {
 
     const lib = b.addSharedLibrary(.{
         .name = "minimd",
-        .root_source_file = .{ .path = "src/lib.zig" },
+        .root_source_file = b.path("src/lib.zig"),
         .target = target,
         .optimize = optimize,
     });
@@ -32,7 +32,7 @@ pub fn build(b: *std.Build) !void {
 
     // zig build test_iter
     const iter_test = b.addTest(.{
-        .root_source_file = .{ .path = "iter.zig" },
+        .root_source_file = b.path("src/iter.zig"),
         .target = target,
         .optimize = optimize,
     });
@@ -42,7 +42,7 @@ pub fn build(b: *std.Build) !void {
 
     // zig build test_lex
     const lexer_test = b.addTest(.{
-        .root_source_file = .{ .path = "src/lexer.zig" },
+        .root_source_file = b.path("src/lexer.zig"),
         .target = target,
         .optimize = optimize,
     });
@@ -52,7 +52,7 @@ pub fn build(b: *std.Build) !void {
     lexer_step.dependOn(&run_uint_test2.step);
 
     const parser_test = b.addTest(.{
-        .root_source_file = .{ .path = "src/parse.zig" },
+        .root_source_file = b.path("src/parse.zig"),
         .target = target,
         .optimize = optimize,
     });
@@ -63,7 +63,7 @@ pub fn build(b: *std.Build) !void {
     parser_step.dependOn(&run_uint_test3.step);
 
     const ast_test = b.addTest(.{
-        .root_source_file = .{ .path = "src/ast.zig" },
+        .root_source_file = b.path("src/ast.zig"),
         .target = target,
         .optimize = optimize,
     });
@@ -73,7 +73,7 @@ pub fn build(b: *std.Build) !void {
     ast_test_step.dependOn(&ast_unit_test.step);
 
     const parse2_test = b.addTest(.{
-        .root_source_file = .{ .path = "src/parse2.zig" },
+        .root_source_file = b.path("src/parse2.zig"),
         .target = target,
         .optimize = optimize,
     });
@@ -85,7 +85,7 @@ pub fn build(b: *std.Build) !void {
     parse2_test_step.dependOn(&parse2_uint_test.step);
 
     const main_tests = b.addTest(.{
-        .root_source_file = .{ .path = "src/lib.zig" },
+        .root_source_file = b.path("src/lib.zig"),
         .target = target,
         .optimize = optimize,
     });

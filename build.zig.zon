@@ -4,12 +4,12 @@
     .dependencies = .{
         //
         .uuid = .{
-            .url = "https://github.com/Chanyon/zig-uuid/archive/dd4c3ddd4eb8fe5f1e92f783a3cca5944a5fd143.tar.gz",
-            .hash = "12206b29f70d7228fc7210033b24caa21bf259052e331580eaa254d285ddd95fe09a",
+            .url = "https://github.com/Chanyon/zig-uuid/archive/c2ab7370004843db38094c708e82d191b2912399.tar.gz",
+            .hash = "1220489b65502b948fe79024279030958dda2a6c2af218a6399fb2650d412585f14a",
         },
         .string = .{
-            .url = "https://github.com/JakubSzark/zig-string/archive/7c2a158a83bc1e20961b1f90223e5c7e300511a3.tar.gz",
-            .hash = "122046414c8a23bc5b5cb644b6a1fb83e0b9de2bf422b223afcd13c357920ae0e196",
+            .url = "https://github.com/JakubSzark/zig-string/archive/9ce0b13e6b0008796907bf9713eb0c1aac2b1ad7.tar.gz",
+            .hash = "12208fa7e4afc8a9c2b267f034d4d7b69952ac5bf39e48449e0a54dcbaae2309f54e",
         },
     },
     .paths = .{""},
