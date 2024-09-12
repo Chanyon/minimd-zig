@@ -9,7 +9,23 @@ pub const Lexer = struct {
     read_pos: usize = 0,
     const Self = @This();
 
-    var escapecharTable = std.StringHashMap([]const u8).init(std.heap.page_allocator);
+    pub const escapecharTable = std.StaticStringMap([]const u8).initComptime(.{
+        .{ "<", "&lt;" },
+        .{ ">", "&gt;" },
+        .{ "^", "&and;" },
+        .{ "*", "*" },
+        .{ "|", "|" },
+        .{ "[", "[" },
+        .{ "]", "]" },
+        .{ "_", "_" },
+        .{ "-", "&minus;" },
+        .{ "~", "&sim;" },
+        .{ "(", "(" },
+        .{ ")", ")" },
+        .{ "#", "#" },
+        .{ "!", "!" },
+        .{ "\"", "\"" },
+    });
 
     pub fn newLexer(input: []const u8) Lexer {
         var lexer = Lexer{
@@ -17,23 +33,6 @@ pub const Lexer = struct {
             .ch = "",
         };
         lexer.readChar();
-        {
-            escapecharTable.put("<", "&lt;") catch unreachable;
-            escapecharTable.put(">", "&gt;") catch unreachable;
-            escapecharTable.put("^", "&and;") catch unreachable;
-            escapecharTable.put("*", "*") catch unreachable;
-            escapecharTable.put("|", "|") catch unreachable;
-            escapecharTable.put("[", "[") catch unreachable;
-            escapecharTable.put("]", "]") catch unreachable;
-            escapecharTable.put("_", "_") catch unreachable;
-            escapecharTable.put("-", "&minus;") catch unreachable;
-            escapecharTable.put("~", "&sim;") catch unreachable;
-            escapecharTable.put("(", "(") catch unreachable;
-            escapecharTable.put(")", ")") catch unreachable;
-            escapecharTable.put("#", "#") catch unreachable;
-            escapecharTable.put("!", "!") catch unreachable;
-            escapecharTable.put("\"", "\"") catch unreachable;
-        }
         return lexer;
     }
 
