@@ -1,15 +1,14 @@
 .{
-    .name = "minimdzig",
+    .name = .minimdzig,
+    .fingerprint = 0x9b9abadccaea5f5e,
     .version = "0.1.0",
     .dependencies = .{
         //
-        .uuid = .{
-            .url = "https://github.com/Chanyon/zig-uuid/archive/c2ab7370004843db38094c708e82d191b2912399.tar.gz",
-            .hash = "1220489b65502b948fe79024279030958dda2a6c2af218a6399fb2650d412585f14a",
-        },
         .string = .{
-            .url = "https://github.com/JakubSzark/zig-string/archive/9ce0b13e6b0008796907bf9713eb0c1aac2b1ad7.tar.gz",
-            .hash = "12208fa7e4afc8a9c2b267f034d4d7b69952ac5bf39e48449e0a54dcbaae2309f54e",
+            .path = "./lib/zig-string",
+        },
+        .uuid = .{
+            .path = "./lib/zig-uuid",
         },
     },
     .paths = .{""},

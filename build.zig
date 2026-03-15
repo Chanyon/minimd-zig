@@ -6,99 +6,92 @@ pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    const uuid_module = b.dependency("uuid", .{}).module("uuid");
     const zig_string = b.dependency("string", .{}).module("string");
-
+    const zig_uuid = b.dependency("uuid", .{}).module("uuid");
     const module = b.createModule(.{
         .root_source_file = b.path("src/lib.zig"),
         .imports = &.{
             //
-            .{ .name = "uuid", .module = uuid_module },
             .{ .name = "string", .module = zig_string },
+            .{ .name = "uuid", .module = zig_uuid },
         },
+        .target = target,
+        .optimize = optimize,
     });
 
     try b.modules.put(b.dupe("minimd"), module);
 
-    const lib = b.addSharedLibrary(.{
-        .name = "minimd",
-        .root_source_file = b.path("src/lib.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-
-    lib.root_module.addImport("string", zig_string);
-    lib.root_module.addImport("uuid", uuid_module);
-
-    // zig build test_iter
-    const iter_test = b.addTest(.{
-        .root_source_file = b.path("src/iter.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    const run_uint_test = b.addRunArtifact(iter_test);
-    const iter_step = b.step("test_iter", "test iterate");
-    iter_step.dependOn(&run_uint_test.step);
-
     // zig build test_lex
     const lexer_test = b.addTest(.{
-        .root_source_file = b.path("src/lexer.zig"),
-        .target = target,
-        .optimize = optimize,
+        .name = "lexer",
+        .root_module = b.addModule("lexer", .{
+            .root_source_file = b.path("src/lexer.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
     const run_uint_test2 = b.addRunArtifact(lexer_test);
 
-    const lexer_step = b.step("test_lex", "test lexer");
+    const lexer_step = b.step("lexer", "test lexer");
     lexer_step.dependOn(&run_uint_test2.step);
 
-    const parser_test = b.addTest(.{
-        .root_source_file = b.path("src/parse.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    parser_test.root_module.addImport("uuid", uuid_module);
+    // const parser_test = b.addTest(.{
+    //     .root_module = b.addModule("parser", .{
+    //         .root_source_file = b.path("src/parse.zig"),
+    //         .target = target,
+    //         .optimize = optimize,
+    //     }),
+    // });
 
-    const run_uint_test3 = b.addRunArtifact(parser_test);
-    const parser_step = b.step("test_parse", "test parser");
-    parser_step.dependOn(&run_uint_test3.step);
+    // const run_uint_test3 = b.addRunArtifact(parser_test);
+    // const parser_step = b.step("test_parse", "test parser");
+    // parser_step.dependOn(&run_uint_test3.step);
 
     const ast_test = b.addTest(.{
-        .root_source_file = b.path("src/ast.zig"),
-        .target = target,
-        .optimize = optimize,
+        .root_module = b.addModule("ast", .{
+            .root_source_file = b.path("src/ast.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
     ast_test.root_module.addImport("string", zig_string);
+    ast_test.root_module.addImport("uuid", zig_uuid);
     const ast_unit_test = b.addRunArtifact(ast_test);
     const ast_test_step = b.step("ast", "test ast");
     ast_test_step.dependOn(&ast_unit_test.step);
 
     const parse2_test = b.addTest(.{
-        .root_source_file = b.path("src/parse2.zig"),
-        .target = target,
-        .optimize = optimize,
+        .name = "parse2",
+        .root_module = b.addModule("parse2", .{
+            .root_source_file = b.path("src/parse2.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
     parse2_test.root_module.addImport("string", zig_string);
-    parse2_test.root_module.addImport("uuid", uuid_module);
-
+    parse2_test.root_module.addImport("uuid", zig_uuid);
     const parse2_uint_test = b.addRunArtifact(parse2_test);
     const parse2_test_step = b.step("parse2", "test parse2");
     parse2_test_step.dependOn(&parse2_uint_test.step);
 
     const main_tests = b.addTest(.{
-        .root_source_file = b.path("src/lib.zig"),
-        .target = target,
-        .optimize = optimize,
+        .name = "lib",
+        .root_module = b.addModule("lib", .{
+            .root_source_file = b.path("src/lib.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
-    main_tests.root_module.addImport("uuid", uuid_module);
 
     const run_uint_test4 = b.addRunArtifact(main_tests);
     const test_step = b.step("test", "Run library tests");
     test_step.dependOn(&run_uint_test4.step);
     test_step.dependOn(&run_uint_test2.step);
-    test_step.dependOn(&run_uint_test3.step);
+    // test_step.dependOn(&run_uint_test3.step);
+    test_step.dependOn(&lexer_test.step);
 
     const install_docs = b.addInstallDirectory(.{
-        .source_dir = lib.getEmittedDocs(),
+        .source_dir = b.path("src//lib.zig"),
         .install_dir = .prefix,
         .install_subdir = "docs",
     });

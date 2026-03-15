@@ -23,7 +23,7 @@ const asttype = enum {
     rawhtml,
 };
 
-pub const AstNode = union(asttype) {
+pub const AstNode = union(enum) {
     text: Text,
     heading: Heading,
     blank_line: BlankLine,
@@ -59,12 +59,11 @@ pub const TreeNode = struct {
     footnotes: ArrayList(AstNode),
     const Self = @This();
     pub fn init(al: std.mem.Allocator) TreeNode {
-        const list = ArrayList(AstNode).init(al);
         return TreeNode{
-            .stmts = list,
+            .stmts = .empty,
             .allocator = al,
-            .heading_titles = ArrayList(AstNode).init(al),
-            .footnotes = ArrayList(AstNode).init(al),
+            .heading_titles = .empty,
+            .footnotes = .empty,
         };
     }
 
@@ -82,7 +81,7 @@ pub const TreeNode = struct {
 
         for (self.heading_titles.items) |*node| {
             try str.concat("<li>");
-            const fmt = try std.fmt.allocPrint(self.allocator, "<a herf=\"#target-{}\">", .{node.heading.uuid});
+            const fmt = try std.fmt.allocPrint(self.allocator, "<a herf=\"#target-{any}\">", .{node.heading.rand_number.bytes});
             try str.concat(fmt);
             try str.concat(node.heading.value.string());
             try str.concat("</a>");
@@ -119,22 +118,22 @@ pub const TreeNode = struct {
     }
 
     pub fn addNode(self: *Self, node: AstNode) !void {
-        try self.stmts.append(node);
+        try self.stmts.append(self.allocator, node);
     }
 
     pub fn deinit(self: *Self) void {
         for (self.stmts.items) |*ast| {
             ast.deinit();
         }
-        self.stmts.deinit();
+        self.stmts.deinit(self.allocator);
         for (self.heading_titles.items) |*ht| {
             ht.deinit();
         }
-        self.heading_titles.deinit();
+        self.heading_titles.deinit(self.allocator);
         for (self.footnotes.items) |*f| {
             f.deinit();
         }
-        self.footnotes.deinit();
+        self.footnotes.deinit(self.allocator);
     }
 };
 
@@ -158,7 +157,7 @@ pub const Heading = struct {
     level: u8,
     value: *AstNode = undefined,
     str: String,
-    uuid: UUID = undefined,
+    rand_number: UUID = undefined,
 
     const Self = @This();
     pub fn init(allocator: std.mem.Allocator) Heading {
@@ -169,7 +168,7 @@ pub const Heading = struct {
         if (self.level > 6) {
             self.str.concat("<h6>") catch return "";
         } else {
-            const fmt = std.fmt.allocPrint(std.heap.page_allocator, "<h{} id=\"target-{}\">", .{ self.level, self.uuid }) catch return "";
+            const fmt = std.fmt.allocPrint(std.heap.page_allocator, "<h{} id=\"target-{any}\">", .{ self.level, 0 }) catch return "";
             defer std.heap.page_allocator.free(fmt);
             self.str.concat(fmt) catch return "";
         }
@@ -270,9 +269,10 @@ pub const TaskList = struct {
         pub const TaskDesc = struct {
             stmts: ArrayList(AstNode),
             str: String,
+            allocator: mem.Allocator,
 
             pub fn init(allocator: mem.Allocator) TaskDesc {
-                return .{ .stmts = ArrayList(AstNode).init(allocator), .str = String.init(allocator) };
+                return .{ .stmts = .empty, .str = String.init(allocator), .allocator = allocator };
             }
 
             pub fn string(self: *TaskDesc) []const u8 {
@@ -288,7 +288,7 @@ pub const TaskList = struct {
                 for (self.stmts.items) |*node| {
                     node.deinit();
                 }
-                self.stmts.deinit();
+                self.stmts.deinit(self.allocator);
                 self.str.deinit();
             }
         };
@@ -308,7 +308,7 @@ pub const TaskList = struct {
     const Self = @This();
 
     pub fn init(allocator: mem.Allocator) TaskList {
-        return .{ .tasks = ArrayList(List).init(allocator), .str = String.init(allocator) };
+        return .{ .tasks = .empty, .str = String.init(allocator) };
     }
 
     pub fn string(self: *Self) []const u8 {
@@ -411,11 +411,16 @@ pub const ImageLink = struct {
 pub const Paragraph = struct {
     stmts: ArrayList(AstNode),
     str: String,
+    allocator: mem.Allocator,
 
     const Self = @This();
 
     pub fn init(allocator: mem.Allocator) Paragraph {
-        return .{ .stmts = ArrayList(AstNode).init(allocator), .str = String.init(allocator) };
+        return .{
+            .stmts = .empty,
+            .str = String.init(allocator),
+            .allocator = allocator,
+        };
     }
 
     pub fn string(self: *Self) []const u8 {
@@ -431,7 +436,7 @@ pub const Paragraph = struct {
         for (self.stmts.items) |*node| {
             node.deinit();
         }
-        self.stmts.deinit();
+        self.stmts.deinit(self.allocator);
         self.str.deinit();
     }
 };
@@ -518,10 +523,12 @@ pub const UnorderList = struct {
         list_type: ListType = .unorder,
         stmts: ArrayList(AstNode),
         str: String,
+        allocator: mem.Allocator,
         pub fn init(allocator: mem.Allocator) Item {
             return .{
-                .stmts = ArrayList(AstNode).init(allocator),
+                .stmts = .empty,
                 .str = String.init(allocator),
+                .allocator = allocator,
             };
         }
 
@@ -535,7 +542,7 @@ pub const UnorderList = struct {
             for (self.stmts.items) |*node| {
                 node.deinit();
             }
-            self.stmts.deinit();
+            self.stmts.deinit(self.allocator);
             self.str.deinit();
         }
     };
@@ -546,7 +553,7 @@ pub const UnorderList = struct {
 
     pub fn init(allocator: mem.Allocator) Self {
         return .{
-            .stmts = ArrayList(Item).init(allocator),
+            .stmts = .empty,
             .str = String.init(allocator),
             .allocator = allocator,
         };
@@ -585,7 +592,7 @@ pub const UnorderList = struct {
         parent_node.*.value = first;
         parent_node.*.parent = null;
         parent_node.*.childrens = null;
-        try list.root.append(parent_node);
+        try list.root.append(page, parent_node);
 
         //- a
         //  - b
@@ -602,15 +609,15 @@ pub const UnorderList = struct {
             const prev_space = stmts.items[idx - 1].space;
             var temp_node: ?*Node = null;
             node = try page.create(Node);
-            node.*.childrens = ArrayList(*Node).init(page);
+            node.*.childrens = .empty;
             node.*.parent = parent_node;
             if (current_space > prev_space) {
                 node.*.value = stmts.items[idx];
                 if (parent_node.childrens) |*children| {
-                    try children.append(node);
+                    try children.append(page, node);
                 } else {
-                    parent_node.*.childrens = ArrayList(*Node).init(page);
-                    try parent_node.*.childrens.?.append(node);
+                    parent_node.*.childrens = .empty;
+                    try parent_node.*.childrens.?.append(page, node);
                 }
             }
             // - a
@@ -622,7 +629,7 @@ pub const UnorderList = struct {
                 while (temp_node) |n| : (temp_node = temp_node.?.parent) {
                     if (current_space > n.value.space) {
                         node.*.value = stmts.items[idx];
-                        try n.childrens.?.append(node);
+                        try n.childrens.?.append(page, node);
 
                         break;
                     }
@@ -634,7 +641,7 @@ pub const UnorderList = struct {
                 while (temp_node) |n| : (temp_node = temp_node.?.parent) {
                     if (current_space > n.value.space) {
                         node.*.value = stmts.items[idx];
-                        try n.childrens.?.append(node);
+                        try n.childrens.?.append(page, node);
 
                         break;
                     }
@@ -644,7 +651,7 @@ pub const UnorderList = struct {
             if (current_space == first_space) {
                 node.*.value = stmts.items[idx];
 
-                try list.root.append(node);
+                try list.root.append(page, node);
             }
             parent_node = node;
         }
@@ -681,7 +688,7 @@ pub const UnorderList = struct {
         for (self.stmts.items) |*item| {
             item.deinit();
         }
-        self.stmts.deinit();
+        self.stmts.deinit(self.allocator);
         self.str.deinit();
     }
 };
@@ -693,6 +700,7 @@ pub const Table = struct {
     thead: ArrayList(AstNode),
     tbody: ArrayList(AstNode),
     str: String,
+    allocator: mem.Allocator,
     pub const Align = enum {
         //
         left,
@@ -703,10 +711,11 @@ pub const Table = struct {
 
     pub fn init(allocator: mem.Allocator) Self {
         return .{
-            .align_style = ArrayList(Align).init(allocator),
-            .thead = ArrayList(AstNode).init(allocator),
-            .tbody = ArrayList(AstNode).init(allocator),
+            .align_style = .empty,
+            .thead = .empty,
+            .tbody = .empty,
             .str = String.init(allocator),
+            .allocator = allocator,
         };
     }
 
@@ -773,9 +782,9 @@ pub const Table = struct {
     }
 
     pub fn deinit(self: *Self) void {
-        self.align_style.deinit();
-        self.thead.deinit();
-        self.tbody.deinit();
+        self.align_style.deinit(self.allocator);
+        self.thead.deinit(self.allocator);
+        self.tbody.deinit(self.allocator);
         self.str.deinit();
     }
 };
@@ -808,7 +817,7 @@ test TreeNode {
     defer tree.deinit();
     var text = Text.init(std.testing.allocator);
     try text.value.concat("hello!你好");
-    var text_node = AstNode{ .text = text };
+    const text_node = AstNode{ .text = text };
     try tree.addNode(text_node);
 
     var heading = Heading.init(std.testing.allocator);
@@ -817,7 +826,7 @@ test TreeNode {
     var text_node_2 = AstNode{ .text = text_2 };
 
     heading.value = &text_node_2;
-    var head_node = AstNode{ .heading = heading };
+    const head_node = AstNode{ .heading = heading };
     try tree.addNode(head_node);
 
     var str = try tree.string();

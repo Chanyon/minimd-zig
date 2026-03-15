@@ -6,30 +6,31 @@ pub const Node = struct {
     value: Item,
     parent: ?*Node = null,
     childrens: ?ArrayList(*Node),
+    allocator: std.mem.Allocator,
     pub fn init(al: std.mem.Allocator) Node {
-        return .{ .value = undefined, .childrens = ArrayList(*Node).init(al) };
+        return .{
+            .value = undefined,
+            .childrens = .empty,
+            .allocator = al,
+        };
     }
 
     pub fn deinit(self: *Node) void {
-        if (self.childrens) |c| {
-            for (c.items) |c_i| {
-                c_i.deinit();
-            }
-            self.childrens.?.deinit();
-        }
+        self.* = undefined;
     }
 };
 
 pub const UnorderListNode = struct {
     root: ArrayList(*Node),
+    allocator: std.mem.Allocator,
     pub fn init(al: std.mem.Allocator) UnorderListNode {
-        return .{ .root = ArrayList(*Node).init(al) };
+        return .{ .root = .empty, .allocator = al };
     }
 
     pub fn deinit(self: *UnorderListNode) void {
         for (self.root.items) |item| {
             item.deinit();
         }
-        self.root.deinit();
+        self.root.deinit(self.allocator);
     }
 };

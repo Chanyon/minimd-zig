@@ -22,8 +22,8 @@ fn init(lex: *Lexer, al: std.mem.Allocator) Parser {
         .cur_token = undefined,
         .peek_token = undefined,
         .context = .{ .orderlist = false, .space = 1 },
-        .heading_titles = std.ArrayList(AstNode).init(al),
-        .footnotes = std.ArrayList(AstNode).init(al),
+        .heading_titles = .empty,
+        .footnotes = .empty,
     };
     p.nextToken();
     p.nextToken();
@@ -43,19 +43,19 @@ fn nextToken(self: *Parser) void {
 pub fn parser(self: *Parser) !Tree {
     var tree = Tree.init(self.allocator);
     while (!self.curTokenIs(.TK_EOF)) {
-        var stmt = try self.parseStatement();
+        const stmt = try self.parseStatement();
         try tree.addNode(stmt);
         self.nextToken();
     }
-    try tree.heading_titles.appendSlice(self.heading_titles.items);
-    self.heading_titles.clearAndFree();
-    try tree.footnotes.appendSlice(self.footnotes.items);
-    self.footnotes.clearAndFree();
+    try tree.heading_titles.appendSlice(self.allocator, self.heading_titles.items);
+    self.heading_titles.clearAndFree(self.allocator);
+    try tree.footnotes.appendSlice(self.allocator, self.footnotes.items);
+    self.footnotes.clearAndFree(self.allocator);
     return tree;
 }
 
 fn parseStatement(self: *Parser) !AstNode {
-    var t = switch (self.cur_token.ty) {
+    return switch (self.cur_token.ty) {
         .TK_WELLNAME => try self.parseHeading(),
         .TK_MINUS => try self.parseBlankLine(),
         .TK_CODEBLOCK => try self.parseCodeBlock(),
@@ -67,8 +67,6 @@ fn parseStatement(self: *Parser) !AstNode {
         },
         else => try self.parseParagraph(),
     };
-
-    return t;
 }
 
 fn parseText(self: *Parser) !AstNode {
@@ -95,12 +93,12 @@ fn parseHeading(self: *Parser) !AstNode {
         self.nextToken();
     }
 
-    var value = try self.allocator.create(AstNode);
+    const value = try self.allocator.create(AstNode);
     value.* = try self.parseText();
     heading.value = value;
-    heading.uuid = UUID.init();
-    var ah = .{ .heading = heading };
-    try self.heading_titles.append(ah);
+    heading.rand_number = .init();
+    const ah: AstNode = .{ .heading = heading };
+    try self.heading_titles.append(self.allocator, ah);
     return ah;
 }
 
@@ -125,14 +123,14 @@ fn parseBlankLine(self: *Parser) !AstNode {
             self.nextToken(); //skip [
             var task = TaskList.init(self.allocator);
             var list = try self.parseTaskList();
-            try task.tasks.append(list);
+            try task.tasks.append(self.allocator, list);
             while (self.curTokenIs(.TK_MINUS)) {
                 self.nextToken();
                 if (self.curTokenIs(.TK_SPACE) and self.peek_token.ty == .TK_LBRACE) {
                     self.nextToken(); //skip space
                     self.nextToken(); //skip [
                     list = try self.parseTaskList();
-                    try task.tasks.append(list);
+                    try task.tasks.append(self.allocator, list);
                 }
             }
             return .{ .task_list = task };
@@ -158,7 +156,7 @@ fn parseTaskList(self: *Parser) !TaskList.List {
     }
     if (self.curTokenIs(.TK_RBRACE)) {
         self.nextToken();
-        var des = try self.allocator.create(TaskList.List.TaskDesc);
+        const des = try self.allocator.create(TaskList.List.TaskDesc);
         des.* = try self.parseTaskDesc();
         list.des = des;
         return list;
@@ -173,24 +171,24 @@ fn parseTaskDesc(self: *Parser) !TaskList.List.TaskDesc {
     while (!self.curTokenIs(.TK_EOF) and !self.peekOtherTokenIs(self.cur_token.ty) and !self.peekOtherTokenIs(self.peek_token.ty)) {
         switch (self.cur_token.ty) {
             .TK_STR => {
-                var text = try self.parseText();
-                try task_desc.stmts.append(text);
+                const text = try self.parseText();
+                try task_desc.stmts.append(self.allocator, text);
             },
             .TK_STRIKETHROUGH => {
-                var s = try self.parseStrikethrough();
-                try task_desc.stmts.append(s);
+                const s = try self.parseStrikethrough();
+                try task_desc.stmts.append(self.allocator, s);
             },
             .TK_LBRACE => {
-                var link = try self.parseLink();
-                try task_desc.stmts.append(link);
+                const link = try self.parseLink();
+                try task_desc.stmts.append(self.allocator, link);
             },
             .TK_CODE => {
-                var code = try self.parseCode();
-                try task_desc.stmts.append(code);
+                const code = try self.parseCode();
+                try task_desc.stmts.append(self.allocator, code);
             },
             .TK_ASTERISKS => {
-                var strong = try self.parseStrong();
-                try task_desc.stmts.append(strong);
+                const strong = try self.parseStrong();
+                try task_desc.stmts.append(self.allocator, strong);
             },
             else => {
                 self.nextToken();
@@ -209,7 +207,7 @@ fn parseStrong(self: *Parser) !AstNode {
         self.nextToken();
     }
     if (self.curTokenIs(.TK_STR)) {
-        var value = try self.allocator.create(AstNode);
+        const value = try self.allocator.create(AstNode);
         value.* = try self.parseText();
         strong.value = value;
     }
@@ -233,7 +231,7 @@ fn parseStrikethrough(self: *Parser) !AstNode {
     }
 
     if (self.curTokenIs(.TK_STR)) {
-        var value = try self.allocator.create(AstNode);
+        const value = try self.allocator.create(AstNode);
         value.* = try self.parseText();
         stri.value = value;
     }
@@ -258,28 +256,28 @@ fn parseParagraph(self: *Parser) !AstNode {
     while (!self.curTokenIs(.TK_EOF) and !self.peekOtherTokenIs(self.cur_token.ty)) {
         switch (self.cur_token.ty) {
             .TK_STR => {
-                var text = try self.parseText();
-                try paragraph.stmts.append(text);
+                const text = try self.parseText();
+                try paragraph.stmts.append(self.allocator, text);
             },
             .TK_STRIKETHROUGH => {
-                var s = try self.parseStrikethrough();
-                try paragraph.stmts.append(s);
+                const s = try self.parseStrikethrough();
+                try paragraph.stmts.append(self.allocator, s);
             },
             .TK_LBRACE => {
-                var link = try self.parseLink();
-                try paragraph.stmts.append(link);
+                const link = try self.parseLink();
+                try paragraph.stmts.append(self.allocator, link);
             },
             .TK_CODE => {
-                var code = try self.parseCode();
-                try paragraph.stmts.append(code);
+                const code = try self.parseCode();
+                try paragraph.stmts.append(self.allocator, code);
             },
             .TK_BANG => {
-                var images = try self.parseImages();
-                try paragraph.stmts.append(images);
+                const images = try self.parseImages();
+                try paragraph.stmts.append(self.allocator, images);
             },
             .TK_ASTERISKS => {
-                var strong = try self.parseStrong();
-                try paragraph.stmts.append(strong);
+                const strong = try self.parseStrong();
+                try paragraph.stmts.append(self.allocator, strong);
             },
             else => {
                 self.nextToken();
@@ -295,7 +293,7 @@ fn parseCode(self: *Parser) !AstNode {
     self.nextToken();
 
     if (self.curTokenIs(.TK_STR)) {
-        var text = try self.allocator.create(AstNode);
+        const text = try self.allocator.create(AstNode);
         text.* = try self.parseText();
         code.value = text;
     } else {
@@ -319,7 +317,7 @@ fn parseCodeBlock(self: *Parser) !AstNode {
     }
 
     var code_text = Text.init(self.allocator);
-    var code_ptr = try self.allocator.create(AstNode);
+    const code_ptr = try self.allocator.create(AstNode);
     while (!self.curTokenIs(.TK_EOF) and !self.curTokenIs(.TK_CODEBLOCK)) {
         try code_text.value.concat(self.cur_token.literal);
         self.nextToken();
@@ -345,8 +343,9 @@ fn parseLink(self: *Parser) !AstNode {
     self.context.link_id += 1;
     var link = Link.init(self.allocator);
     link.id = self.context.link_id;
+
     if (self.curTokenIs(.TK_STR)) {
-        var d = try self.allocator.create(AstNode);
+        const d = try self.allocator.create(AstNode);
         d.* = try self.parseText();
         link.link_des = d;
     } else {
@@ -356,13 +355,13 @@ fn parseLink(self: *Parser) !AstNode {
     self.nextToken();
     if (self.curTokenIs(.TK_LPAREN)) {
         self.nextToken();
-        var h = try self.allocator.create(AstNode);
+        const h = try self.allocator.create(AstNode);
         h.* = try self.parseText();
         link.herf = h;
         // "
         if (self.curTokenIs(.TK_QUOTE)) {
             self.nextToken();
-            var tip = try self.allocator.create(AstNode);
+            const tip = try self.allocator.create(AstNode);
             tip.* = try self.parseText();
             link.link_tip = tip;
 
@@ -373,8 +372,8 @@ fn parseLink(self: *Parser) !AstNode {
     }
     //skip `)`
     self.nextToken();
-    const l = .{ .link = link };
-    try self.footnotes.append(l);
+    const l: AstNode = .{ .link = link };
+    try self.footnotes.append(self.allocator, l);
     return l;
 }
 
@@ -390,7 +389,7 @@ fn parseIamgeLink(self: *Parser) !AstNode {
 
     var image_link = ImageLink.init(self.allocator);
     if (self.curTokenIs(.TK_STR)) {
-        var alt = try self.allocator.create(AstNode);
+        const alt = try self.allocator.create(AstNode);
         alt.* = try self.parseText();
         image_link.alt = alt;
     } else {
@@ -400,7 +399,7 @@ fn parseIamgeLink(self: *Parser) !AstNode {
     self.nextToken();
     if (self.curTokenIs(.TK_LPAREN)) {
         self.nextToken();
-        var src = try self.allocator.create(AstNode);
+        const src = try self.allocator.create(AstNode);
         src.* = try self.parseText();
         image_link.src = src;
     } else {
@@ -412,7 +411,7 @@ fn parseIamgeLink(self: *Parser) !AstNode {
     self.nextToken();
     if (self.curTokenIs(.TK_LPAREN)) {
         self.nextToken();
-        var href = try self.allocator.create(AstNode);
+        const href = try self.allocator.create(AstNode);
         href.* = try self.parseText();
         image_link.herf = href;
     } else return error.ImageLinkSyntaxError;
@@ -433,7 +432,7 @@ fn parseImages(self: *Parser) !AstNode {
     }
     var image = Images.init(self.allocator);
     if (self.curTokenIs(.TK_STR)) {
-        var d = try self.allocator.create(AstNode);
+        const d = try self.allocator.create(AstNode);
         d.* = try self.parseText();
         image.alt = d;
     } else {
@@ -443,7 +442,7 @@ fn parseImages(self: *Parser) !AstNode {
     self.nextToken();
     if (self.curTokenIs(.TK_LPAREN)) {
         self.nextToken();
-        var src = try self.allocator.create(AstNode);
+        const src = try self.allocator.create(AstNode);
         src.* = try self.parseText();
         image.src = src;
 
@@ -478,24 +477,24 @@ fn parseOrderList(self: *Parser) !AstNode {
         while (!self.curTokenIs(.TK_EOF) and (!self.curTokenIs(.TK_MINUS) and !self.curTokenIs(.TK_NUM_DOT)) and !self.peekOtherTokenIs(self.peek_token.ty)) {
             switch (self.cur_token.ty) {
                 .TK_STR => {
-                    try current_item.stmts.append(try self.parseText());
+                    try current_item.stmts.append(self.allocator, try self.parseText());
                     space = 1;
                     // std.debug.print(">>>>>>({s})-{any}\n", .{ self.cur_token.literal, self.peek_token.ty });
                 },
                 .TK_ASTERISKS => {
-                    try current_item.stmts.append(try self.parseStrong());
+                    try current_item.stmts.append(self.allocator, try self.parseStrong());
                 },
                 .TK_STRIKETHROUGH => {
-                    var s = try self.parseStrikethrough();
-                    try current_item.stmts.append(s);
+                    const s = try self.parseStrikethrough();
+                    try current_item.stmts.append(self.allocator, s);
                 },
                 .TK_LBRACE => {
-                    var link = try self.parseLink();
-                    try current_item.stmts.append(link);
+                    const link = try self.parseLink();
+                    try current_item.stmts.append(self.allocator, link);
                 },
                 .TK_CODE => {
-                    var code = try self.parseCode();
-                    try current_item.stmts.append(code);
+                    const code = try self.parseCode();
+                    try current_item.stmts.append(self.allocator, code);
                     // std.debug.print(">>>>>>{s}{any}\n", .{ self.cur_token.literal, self.peek_token.ty });
                 },
                 .TK_SPACE => {
@@ -507,7 +506,7 @@ fn parseOrderList(self: *Parser) !AstNode {
                 },
             }
         }
-        try unorder_list.stmts.append(current_item);
+        try unorder_list.stmts.append(self.allocator, current_item);
 
         if (self.cur_token.ty == .TK_NUM_DOT) current_item_type = .order;
         if (self.cur_token.ty == .TK_MINUS or self.peek_token.ty == .TK_MINUS) current_item_type = .unorder;
@@ -534,7 +533,7 @@ fn parseTable(self: *Parser) !AstNode {
 
         if (self.curTokenIs(.TK_STR)) {
             const th = try self.parseParagraph();
-            try tb.thead.append(th);
+            try tb.thead.append(self.allocator, th);
             while (self.curTokenIs(.TK_SPACE)) {
                 self.nextToken();
             }
@@ -559,10 +558,10 @@ fn parseTable(self: *Parser) !AstNode {
             }
 
             if (self.curTokenIs(.TK_COLON)) {
-                try tb.align_style.append(.center);
+                try tb.align_style.append(self.allocator, .center);
                 self.nextToken();
             } else {
-                try tb.align_style.append(.left);
+                try tb.align_style.append(self.allocator, .left);
             }
             while (self.curTokenIs(.TK_SPACE)) {
                 self.nextToken();
@@ -574,7 +573,7 @@ fn parseTable(self: *Parser) !AstNode {
                 self.nextToken();
             }
             if (self.curTokenIs(.TK_COLON)) {
-                try tb.align_style.append(.right);
+                try tb.align_style.append(self.allocator, .right);
                 self.nextToken();
             }
             while (self.curTokenIs(.TK_SPACE)) {
@@ -599,7 +598,7 @@ fn parseTable(self: *Parser) !AstNode {
         }
         //text p
         const tbody = try self.parseParagraph();
-        try tb.tbody.append(tbody);
+        try tb.tbody.append(self.allocator, tbody);
 
         // std.debug.print(">>>>>>{any} {any}\n", .{ self.cur_token.ty, self.peek_token.ty });
         self.nextToken();
@@ -720,11 +719,22 @@ test Parser {
             \\
             \\</div>
         ;
+        const fontnote =
+            \\test[^1]
+            \\[^1]: ooooo
+            \\
+        ;
+        const footnote_html =
+            \\<p>test<a id="src-1" href="#target-1">[1]</a></p>
+            \\<section>
+            \\<p><a id="target-1" href="#src-1">[^1]</a>:  ooo</p>
+            \\</section>
+        ;
     };
     const tests = [_]TestV{
         //
         .{ .markdown = "world\n", .html = "<p>world\n</p>" },
-        // .{ .markdown = "## hello", .html = "<h2>hello</h2>" },
+        .{ .markdown = "## hello", .html = "<h2 id=\"target-0\">hello</h2>" },
         .{ .markdown = "----", .html = "<hr/>" },
         .{ .markdown = "**hi**", .html = "<p><strong>hi</strong></p>" },
         .{ .markdown = "*hi*", .html = "<p><em>hi</em></p>" },
@@ -746,6 +756,7 @@ test Parser {
         .{ .markdown = TestV.orderlylist, .html = "<ol><li>First item\n</li><li>Second item\n<ul><li>hi\n</li><li>ho\n</li></ul></li><li>Third item\n</li><li>Indented item\n</li><li>Indented item\n</li><li>Fourth item</li></ol>" },
         .{ .markdown = TestV.table, .html = "<table><thead><th style=\"text-align:left\"><p>one </p></th><th style=\"text-align:center\"><p>two </p></th><th style=\"text-align:right\"><p>three</p></th></thead><tbody><tr><td style=\"text-align:left\"><p>hi </p></td><td style=\"text-align:center\"><p>wooo </p></td><td style=\"text-align:right\"><p>hello  </p></td></tr></tbody></table>" },
         .{ .markdown = TestV.rawhtml, .html = "<div>hello<a href=\"http://github.com\" style=\"width:10px\"></a></div>" },
+        // .{ .markdown = TestV.fontnote, .html = TestV.footnote_html },
     };
     inline for (tests, 0..) |item, i| {
         var lexer = Lexer.newLexer(item.markdown);
@@ -766,13 +777,13 @@ test Parser {
         if (tree_nodes.heading_titles.items.len > 0) {
             var h = try tree_nodes.headingTitleString();
             defer h.deinit();
-            std.debug.print("{s}\n", .{h.str()});
+            std.debug.print("heading:{s}\n", .{h.str()});
         }
 
         if (tree_nodes.footnotes.items.len > 0) {
             var h = try tree_nodes.footnoteString();
             defer h.deinit();
-            std.debug.print("{s}\n", .{h.str()});
+            std.debug.print("footnote: {s}\n", .{h.str()});
         }
 
         var str = try tree_nodes.string();
