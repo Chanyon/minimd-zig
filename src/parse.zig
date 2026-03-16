@@ -49,12 +49,12 @@ pub const Parser = struct {
     };
 
     pub fn NewParser(lex: *Lexer, al: std.mem.Allocator) Parser {
-        const list = std.ArrayList([]const u8).init(al);
-        const unordered = std.ArrayList(Unordered).init(al);
-        const table_list = std.ArrayList(std.ArrayList(Token)).init(al);
-        const align_style = std.ArrayList(Align).init(al);
-        const footnote_list = std.ArrayList(Footnote).init(al);
-        const title_nav = std.ArrayList([]const u8).init(al);
+        const list: std.ArrayList([]const u8) = .empty;
+        const unordered = std.ArrayList(Unordered).empty;
+        const table_list = std.ArrayList(std.ArrayList(Token)).empty;
+        const align_style = std.ArrayList(Align).empty;
+        const footnote_list = std.ArrayList(Footnote).empty;
+        const title_nav = std.ArrayList([]const u8).empty;
         var parser = Parser{
             //
             .allocator = al,
@@ -76,12 +76,12 @@ pub const Parser = struct {
     }
 
     pub fn deinit(self: *Parser) void {
-        self.out.deinit();
-        self.unordered_list.deinit();
-        self.table_list.deinit();
-        self.table_context.align_style.deinit();
-        self.footnote_list.deinit();
-        self.title_nav.deinit();
+        self.out.deinit(self.allocator);
+        self.unordered_list.deinit(self.allocator);
+        self.table_list.deinit(self.allocator);
+        self.table_context.align_style.deinit(self.allocator);
+        self.footnote_list.deinit(self.allocator);
+        self.title_nav.deinit(self.allocator);
     }
 
     fn nextToken(self: *Parser) void {
@@ -133,36 +133,36 @@ pub const Parser = struct {
         }
 
         if (level > 6) {
-            try self.out.append("<p>");
+            try self.out.append(self.allocator, "<p>");
             var i: usize = 0;
             while (!self.curTokenIs(.TK_BR) and self.cur_token.ty != .TK_EOF) {
                 while (i <= level - 1) : (i += 1) {
-                    try self.out.append("#");
+                    try self.out.append(self.allocator, "#");
                 }
-                try self.out.append(self.cur_token.literal);
+                try self.out.append(self.allocator, self.cur_token.literal);
                 self.nextToken();
             }
-            try self.out.append("</p>");
+            try self.out.append(self.allocator, "</p>");
             return;
         }
 
         if (self.cur_token.ty != .TK_SPACE) {
-            try self.out.append("<p>");
+            try self.out.append(self.allocator, "<p>");
             var i: usize = 0;
             while (!self.curTokenIs(.TK_BR) and self.cur_token.ty != .TK_EOF) {
                 while (i <= level - 1) : (i += 1) {
-                    try self.out.append("#");
+                    try self.out.append(self.allocator, "#");
                 }
-                try self.out.append(self.cur_token.literal);
+                try self.out.append(self.allocator, self.cur_token.literal);
                 self.nextToken();
             }
-            try self.out.append("</p>");
+            try self.out.append(self.allocator, "</p>");
         } else {
             self.nextToken(); //skip space
             const parse_test = parseTest{ .is_test = true };
             var id: Type(parse_test.is_test) = undefined;
             if (parse_test.is_test) {
-                var rng = std.rand.DefaultPrng.init(100);
+                var rng = std.Random.DefaultPrng.init(100);
                 id = rng.random().int(u16);
             } else {
                 id = UUID.init();
@@ -170,12 +170,12 @@ pub const Parser = struct {
             const fmt = try std.fmt.allocPrint(self.allocator, "<h{} id=\"target-{}\">", .{ level, id });
             const atage = try std.fmt.allocPrint(self.allocator, "<li><a href=\"#target-{}\">", .{id});
 
-            try self.title_nav.append(atage);
-            try self.out.append(fmt);
+            try self.out.append(self.allocator, atage);
+            try self.out.append(self.allocator, fmt);
 
             while (!self.curTokenIs(.TK_BR) and self.cur_token.ty != .TK_EOF) {
-                try self.out.append(self.cur_token.literal);
-                try self.title_nav.append(self.cur_token.literal);
+                try self.out.append(self.allocator, self.cur_token.literal);
+                try self.out.append(self.allocator, self.cur_token.literal);
 
                 self.nextToken();
             }
@@ -183,8 +183,8 @@ pub const Parser = struct {
             // std.debug.print("{any}==>{s}\n", .{self.cur_token.ty, self.cur_token.literal});
             const fmt2 = try std.fmt.allocPrint(self.allocator, "</h{}>", .{level});
 
-            try self.out.append(fmt2);
-            try self.title_nav.append("</a></li>");
+            try self.out.append(self.allocator, fmt2);
+            try self.out.append(self.allocator, "</a></li>");
         }
         while (self.curTokenIs(.TK_BR)) {
             self.nextToken();
@@ -200,8 +200,8 @@ pub const Parser = struct {
         self.is_parse_text = true;
         var is_backslash = false;
 
-        try self.out.append("<p>");
-        try self.out.append(self.prev_token.literal);
+        try self.out.append(self.allocator, "<p>");
+        try self.out.append(self.allocator, self.prev_token.literal);
 
         // self.nextToken();
         // hello*test*world or hello__test__world
@@ -236,7 +236,7 @@ pub const Parser = struct {
                 self.nextToken();
             }
             if (self.curTokenIs(.TK_BR)) {
-                try self.out.append(self.cur_token.literal);
+                try self.out.append(self.allocator, self.cur_token.literal);
                 self.nextToken();
                 if (self.curTokenIs(.TK_BR) or (self.curTokenIs(.TK_SPACE) and !is_backslash)) {
                     break;
@@ -276,12 +276,12 @@ pub const Parser = struct {
                     else => {},
                 }
             }
-            try self.out.append(self.cur_token.literal);
+            try self.out.append(self.allocator, self.cur_token.literal);
             self.nextToken();
             is_backslash = false;
         }
 
-        try self.out.append("</p>");
+        try self.out.append(self.allocator, "</p>");
 
         self.is_parse_text = false;
         return;
@@ -299,17 +299,17 @@ pub const Parser = struct {
             }
 
             if (level == 1) {
-                try self.out.append("<em>");
+                try self.out.append(self.allocator, "<em>");
             } else if (level == 2) {
-                try self.out.append("<strong>");
+                try self.out.append(self.allocator, "<strong>");
             } else {
                 //*** => <hr/>
                 if (self.curTokenIs(.TK_BR) or self.curTokenIs(.TK_SPACE) and !self.peekTokenIs(.TK_STR)) {
-                    try self.out.append("<hr>");
+                    try self.out.append(self.allocator, "<hr>");
                     // self.nextToken();
                     return;
                 }
-                try self.out.append("<strong><em>");
+                try self.out.append(self.allocator, "<strong><em>");
             }
             // \\***###test
             // \\### hh
@@ -323,7 +323,7 @@ pub const Parser = struct {
                     }
                     continue;
                 }
-                try self.out.append(self.cur_token.literal);
+                try self.out.append(self.allocator, self.cur_token.literal);
                 self.nextToken();
             }
 
@@ -332,11 +332,11 @@ pub const Parser = struct {
                     self.nextToken();
                 }
                 if (level == 1) {
-                    try self.out.append("</em>");
+                    try self.out.append(self.allocator, "</em>");
                 } else if (level == 2) {
-                    try self.out.append("</strong>");
+                    try self.out.append(self.allocator, "</strong>");
                 } else {
-                    try self.out.append("</em></strong>");
+                    try self.out.append(self.allocator, "</em></strong>");
                 }
             }
         } else {
@@ -346,7 +346,7 @@ pub const Parser = struct {
             }
 
             if (level == 2) {
-                try self.out.append("<strong>");
+                try self.out.append(self.allocator, "<strong>");
             }
 
             while (!self.curTokenIs(.TK_UNDERLINE) and !self.curTokenIs(.TK_EOF)) {
@@ -357,7 +357,7 @@ pub const Parser = struct {
                     }
                     continue;
                 }
-                try self.out.append(self.cur_token.literal);
+                try self.out.append(self.allocator, self.cur_token.literal);
                 self.nextToken();
             }
 
@@ -366,7 +366,7 @@ pub const Parser = struct {
                     self.nextToken();
                 }
                 if (level == 2) {
-                    try self.out.append("</strong>");
+                    try self.out.append(self.allocator, "</strong>");
                 }
             }
         }
@@ -378,7 +378,7 @@ pub const Parser = struct {
     // >
     // >> world!
     fn parseQuote(self: *Parser) !void {
-        try self.out.append("<blockquote>");
+        try self.out.append(self.allocator, "<blockquote>");
 
         while (!self.curTokenIs(.TK_BR) and !self.curTokenIs(.TK_EOF)) {
             if (self.curTokenIs(.TK_GT)) {
@@ -397,7 +397,7 @@ pub const Parser = struct {
                 },
                 else => {
                     if (self.cur_token.ty != .TK_BR) {
-                        try self.out.append(self.cur_token.literal);
+                        try self.out.append(self.allocator, self.cur_token.literal);
                     }
                     self.nextToken();
                 },
@@ -415,7 +415,7 @@ pub const Parser = struct {
         } else {
             self.nextToken();
         }
-        try self.out.append("</blockquote>");
+        try self.out.append(self.allocator, "</blockquote>");
         return;
     }
 
@@ -431,7 +431,7 @@ pub const Parser = struct {
         }
 
         if (level >= 3) {
-            try self.out.append("<hr>");
+            try self.out.append(self.allocator, "<hr>");
             while (self.curTokenIs(.TK_BR)) {
                 self.nextToken();
             }
@@ -457,7 +457,7 @@ pub const Parser = struct {
                 self.nextToken();
                 self.nextToken(); //skip token `]`
 
-                try self.out.append("<div>");
+                try self.out.append(self.allocator, "<div>");
                 while (!self.curTokenIs(.TK_EOF)) {
                     // skip space
                     while (self.curTokenIs(.TK_SPACE)) {
@@ -486,16 +486,16 @@ pub const Parser = struct {
                         }
                     }
                     if (is_space) {
-                        try self.out.append("<input type=\"checkbox\">  ");
+                        try self.out.append(self.allocator, "<input type=\"checkbox\">  ");
                     } else {
-                        try self.out.append("<input type=\"checkbox\" checked>  ");
+                        try self.out.append(self.allocator, "<input type=\"checkbox\" checked>  ");
                     }
-                    try self.out.append(self.cur_token.literal);
-                    try self.out.append("</input><br>");
+                    try self.out.append(self.allocator, self.cur_token.literal);
+                    try self.out.append(self.allocator, "</input><br>");
 
                     self.nextToken();
                 }
-                try self.out.append("</div>");
+                try self.out.append(self.allocator, "</div>");
             } else {
                 while (!self.curTokenIs(.TK_EOF)) {
                     if (self.curTokenIs(.TK_SPACE)) {
@@ -527,7 +527,11 @@ pub const Parser = struct {
                     }
 
                     // std.debug.print("{any}==>`{s}`\n", .{ self.cur_token.ty, self.cur_token.literal });
-                    var unordered: Unordered = .{ .spaces = spaces, .token = self.cur_token, .list = std.ArrayList([]const u8).init(self.allocator) };
+                    var unordered: Unordered = .{
+                        .spaces = spaces,
+                        .token = self.cur_token,
+                        .list = std.ArrayList([]const u8).empty,
+                    };
                     var idx: usize = 0;
                     const cur_out_len = blk: {
                         switch (self.cur_token.ty) {
@@ -558,12 +562,12 @@ pub const Parser = struct {
                         }
                     };
 
-                    try unordered.list.appendSlice(self.out.items[out_len..cur_out_len]);
+                    try unordered.list.appendSlice(self.allocator, self.out.items[out_len..cur_out_len]);
                     while (idx < cur_out_len - out_len) : (idx += 1) {
                         _ = self.out.swapRemove(out_len);
                     }
 
-                    try self.unordered_list.append(unordered);
+                    try self.unordered_list.append(self.allocator, unordered);
                     self.nextToken();
                 }
             }
@@ -574,13 +578,13 @@ pub const Parser = struct {
             const len = self.unordered_list.items.len;
             {
                 if (parse_ty == .TK_MINUS or parse_ty == .TK_PLUS) {
-                    try self.out.append("<ul>");
+                    try self.out.append(self.allocator, "<ul>");
                 } else {
-                    try self.out.append("<ol>");
+                    try self.out.append(self.allocator, "<ol>");
                 }
-                try self.out.append("<li>");
-                try self.out.appendSlice(self.unordered_list.items[0].list.items[0..]);
-                try self.out.append("</li>");
+                try self.out.append(self.allocator, "<li>");
+                try self.out.appendSlice(self.allocator, self.unordered_list.items[0].list.items[0..]);
+                try self.out.append(self.allocator, "</li>");
             }
 
             while (idx < len) : (idx += 1) {
@@ -589,14 +593,14 @@ pub const Parser = struct {
                     if (self.unordered_list.items[idx].spaces == self.unordered_list.items[prev_idx].spaces) {
                         if (self.unordered_list.items[idx].spaces < self.unordered_list.items[idx - 1].spaces) {
                             if (parse_ty == .TK_MINUS or parse_ty == .TK_PLUS) {
-                                try self.out.append("</ul>");
+                                try self.out.append(self.allocator, "</ul>");
                             } else {
-                                try self.out.append("</ol>");
+                                try self.out.append(self.allocator, "</ol>");
                             }
                         }
-                        try self.out.append("<li>");
-                        try self.out.appendSlice(self.unordered_list.items[idx].list.items[0..]);
-                        try self.out.append("</li>");
+                        try self.out.append(self.allocator, "<li>");
+                        try self.out.appendSlice(self.allocator, self.unordered_list.items[idx].list.items[0..]);
+                        try self.out.append(self.allocator, "</li>");
 
                         break;
                     }
@@ -604,28 +608,28 @@ pub const Parser = struct {
 
                 if (self.unordered_list.items[idx].spaces > self.unordered_list.items[idx - 1].spaces) {
                     if (parse_ty == .TK_MINUS or parse_ty == .TK_PLUS) {
-                        try self.out.append("<ul>");
+                        try self.out.append(self.allocator, "<ul>");
                     } else {
-                        try self.out.append("<ol>");
+                        try self.out.append(self.allocator, "<ol>");
                     }
 
-                    try self.out.append("<li>");
-                    try self.out.appendSlice(self.unordered_list.items[idx].list.items[0..]);
-                    try self.out.append("</li>");
+                    try self.out.append(self.allocator, "<li>");
+                    try self.out.appendSlice(self.allocator, self.unordered_list.items[idx].list.items[0..]);
+                    try self.out.append(self.allocator, "</li>");
 
                     if (idx == len - 1) {
                         if (parse_ty == .TK_MINUS or parse_ty == .TK_PLUS) {
-                            try self.out.append("</ul>");
+                            try self.out.append(self.allocator, "</ul>");
                         } else {
-                            try self.out.append("</ol>");
+                            try self.out.append(self.allocator, "</ol>");
                         }
                     }
                 }
             }
             if (parse_ty == .TK_MINUS or parse_ty == .TK_PLUS) {
-                try self.out.append("</ul>");
+                try self.out.append(self.allocator, "</ul>");
             } else {
-                try self.out.append("</ol>");
+                try self.out.append(self.allocator, "</ol>");
             }
 
             self.resetOrderList();
@@ -645,16 +649,16 @@ pub const Parser = struct {
             if (self.curTokenIs(.TK_LPAREN)) {
                 self.nextToken(); // skip (
             }
-            var a_href = std.ArrayList([]const u8).init(self.allocator);
+            var a_href = std.ArrayList([]const u8).empty;
             while (!self.curTokenIs(.TK_EOF) and !self.curTokenIs(.TK_RPAREN)) {
-                try a_href.append(self.cur_token.literal);
+                try a_href.append(self.allocator, self.cur_token.literal);
                 self.nextToken();
             }
             const a_href_str = try std.mem.join(self.allocator, "", a_href.items);
             const fmt = try std.fmt.allocPrint(self.allocator, "<a href=\"{s}\">{s}", .{ a_href_str, str });
-            try self.out.append(fmt);
+            try self.out.append(self.allocator, fmt);
             if (self.curTokenIs(.TK_RPAREN)) {
-                try self.out.append("</a>");
+                try self.out.append(self.allocator, "</a>");
                 self.nextToken();
             }
         }
@@ -664,12 +668,12 @@ pub const Parser = struct {
             self.nextToken();
             var img_tag: []const u8 = undefined;
             try self.parseImage();
-            img_tag = self.out.pop();
+            img_tag = self.out.pop().?;
             if (self.expectPeek(.TK_LPAREN)) {
                 self.nextToken();
                 if (self.peekTokenIs(.TK_RPAREN)) {
                     const fmt = try std.fmt.allocPrint(self.allocator, "<a href=\"{s}\">{s}</a>", .{ self.cur_token.literal, img_tag });
-                    try self.out.append(fmt);
+                    try self.out.append(self.allocator, fmt);
                     self.nextToken();
                     self.nextToken();
                 }
@@ -684,7 +688,7 @@ pub const Parser = struct {
                 insert_text = self.cur_token.literal;
                 if (self.is_parse_text) {
                     const fmt = try std.fmt.allocPrint(self.allocator, "<a id=\"src-{s}\" href=\"#target-{s}\"><sup>[{s}]</sup></a>", .{ insert_text, insert_text, insert_text });
-                    try self.out.append(fmt);
+                    try self.out.append(self.allocator, fmt);
                 }
                 self.nextToken();
                 self.nextToken();
@@ -695,7 +699,7 @@ pub const Parser = struct {
                         self.nextToken();
                     }
                     if (self.curTokenIs(.TK_STR)) {
-                        try self.footnote_list.append(.{ .insert_text = insert_text, .detailed_text = self.cur_token.literal });
+                        try self.footnote_list.append(self.allocator, .{ .insert_text = insert_text, .detailed_text = self.cur_token.literal });
                         self.nextToken();
                     }
                     // std.debug.print("{any}==>`{s}`\n", .{ self.cur_token.ty, self.cur_token.literal });
@@ -708,12 +712,12 @@ pub const Parser = struct {
 
     fn footnoteInsert(self: *Parser) !void {
         if (self.footnote_list.items.len > 0) {
-            try self.out.append("<div><section>");
+            try self.out.append(self.allocator, "<div><section>");
             for (self.footnote_list.items) |footnote| {
                 const fmt = try std.fmt.allocPrint(self.allocator, "<p><a id=\"target-{s}\" href=\"#src-{s}\">[^{s}]</a>:  {s}</p>", .{ footnote.insert_text, footnote.insert_text, footnote.insert_text, footnote.detailed_text });
-                try self.out.append(fmt);
+                try self.out.append(self.allocator, fmt);
             }
-            try self.out.append("</section></div>");
+            try self.out.append(self.allocator, "</section></div>");
         }
     }
 
@@ -722,7 +726,7 @@ pub const Parser = struct {
             const str = self.cur_token.literal;
 
             if (self.IsHtmlTag(str)) {
-                try self.out.append("<");
+                try self.out.append(self.allocator, "<");
                 while (!self.curTokenIs(.TK_EOF)) {
                     if (self.curTokenIs(.TK_BR)) {
                         if (self.peekOtherTokenIs(self.peek_token.ty)) {
@@ -731,31 +735,31 @@ pub const Parser = struct {
                         self.nextToken();
                         continue;
                     }
-                    try self.out.append(self.cur_token.literal);
+                    try self.out.append(self.allocator, self.cur_token.literal);
                     self.nextToken();
                 }
             } else {
                 const fmt = try std.fmt.allocPrint(self.allocator, "<a href=\"{s}", .{str});
-                try self.out.append(fmt);
+                try self.out.append(self.allocator, fmt);
 
                 self.nextToken();
                 if (self.cur_token.ty == .TK_GT) {
-                    try self.out.append("\">");
-                    try self.out.append(str);
-                    try self.out.append("</a>");
+                    try self.out.append(self.allocator, "\">");
+                    try self.out.append(self.allocator, str);
+                    try self.out.append(self.allocator, "</a>");
                 } else {
-                    var a_conetent = std.ArrayList([]const u8).init(self.allocator);
+                    var a_conetent = std.ArrayList([]const u8).empty;
                     // defer a_conetent.deinit();
                     while (!self.curTokenIs(.TK_EOF) and !self.curTokenIs(.TK_GT)) {
-                        try self.out.append(self.cur_token.literal);
-                        try a_conetent.append(self.cur_token.literal);
+                        try self.out.append(self.allocator, self.cur_token.literal);
+                        try a_conetent.append(self.allocator, self.cur_token.literal);
                         self.nextToken();
                     }
 
-                    try self.out.append("\">");
-                    try self.out.append(str);
-                    try self.out.appendSlice(a_conetent.items);
-                    try self.out.append("</a>");
+                    try self.out.append(self.allocator, "\">");
+                    try self.out.append(self.allocator, str);
+                    try self.out.appendSlice(self.allocator, a_conetent.items);
+                    try self.out.append(self.allocator, "</a>");
                 }
             }
         }
@@ -775,7 +779,7 @@ pub const Parser = struct {
                     if (self.expectPeek(.TK_LPAREN)) {
                         self.nextToken();
                         const fmt = try std.fmt.allocPrint(self.allocator, "<img src=\"{s}\" alt=\"{s}\">", .{ self.cur_token.literal, str });
-                        try self.out.append(fmt);
+                        try self.out.append(self.allocator, fmt);
                     }
                 }
             }
@@ -789,9 +793,9 @@ pub const Parser = struct {
         if (self.curTokenIs(.TK_STRIKETHROUGH)) {
             self.nextToken();
             if (self.peekTokenIs(.TK_STRIKETHROUGH)) {
-                try self.out.append("<p><s>");
-                try self.out.append(self.cur_token.literal);
-                try self.out.append("</s></p>");
+                try self.out.append(self.allocator, "<p><s>");
+                try self.out.append(self.allocator, self.cur_token.literal);
+                try self.out.append(self.allocator, "</s></p>");
                 self.nextToken();
             }
         }
@@ -805,9 +809,9 @@ pub const Parser = struct {
         if (self.curTokenIs(.TK_STRIKETHROUGH)) {
             self.nextToken();
             if (self.peekTokenIs(.TK_STRIKETHROUGH)) {
-                try self.out.append("<s>");
-                try self.out.append(self.cur_token.literal);
-                try self.out.append("</s>");
+                try self.out.append(self.allocator, "<s>");
+                try self.out.append(self.allocator, self.cur_token.literal);
+                try self.out.append(self.allocator, "</s>");
                 self.nextToken();
             }
         }
@@ -819,9 +823,9 @@ pub const Parser = struct {
 
     fn parseCode(self: *Parser) !void {
         if (self.peekTokenIs(.TK_CODE)) {
-            try self.out.append("<code>");
-            try self.out.append(self.cur_token.literal);
-            try self.out.append("</code>");
+            try self.out.append(self.allocator, "<code>");
+            try self.out.append(self.allocator, self.cur_token.literal);
+            try self.out.append(self.allocator, "</code>");
             self.nextToken();
         }
         self.nextToken();
@@ -829,24 +833,24 @@ pub const Parser = struct {
     }
 
     fn parseBackquotes(self: *Parser) !void {
-        try self.out.append("<code>");
-        try self.out.append(self.cur_token.literal);
+        try self.out.append(self.allocator, "<code>");
+        try self.out.append(self.allocator, self.cur_token.literal);
         self.nextToken();
         if (self.curTokenIs(.TK_CODE)) {
-            try self.out.append(self.cur_token.literal);
+            try self.out.append(self.allocator, self.cur_token.literal);
             self.nextToken();
-            try self.out.append(self.cur_token.literal);
+            try self.out.append(self.allocator, self.cur_token.literal);
             if (self.expectPeek(.TK_CODE)) {
-                try self.out.append(self.cur_token.literal);
+                try self.out.append(self.allocator, self.cur_token.literal);
                 self.nextToken();
             }
             while (!self.curTokenIs(.TK_CODELINE) and !self.curTokenIs(.TK_EOF)) {
-                try self.out.append(self.cur_token.literal);
+                try self.out.append(self.allocator, self.cur_token.literal);
                 self.nextToken();
             }
         }
         if (self.curTokenIs(.TK_CODELINE)) {
-            try self.out.append("</code>");
+            try self.out.append(self.allocator, "</code>");
             self.nextToken();
         }
         return;
@@ -855,26 +859,26 @@ pub const Parser = struct {
     fn parseCodeBlock(self: *Parser) !void {
         //```zig
         if (self.curTokenIs(.TK_STR)) {
-            try self.out.append("<pre><code class=\"language-");
-            try self.out.append(self.cur_token.literal);
-            try self.out.append("\">");
+            try self.out.append(self.allocator, "<pre><code class=\"language-");
+            try self.out.append(self.allocator, self.cur_token.literal);
+            try self.out.append(self.allocator, "\">");
             self.nextToken();
         } else {
-            try self.out.append("<pre><code>");
+            try self.out.append(self.allocator, "<pre><code>");
         }
         while (!self.curTokenIs(.TK_EOF) and !self.curTokenIs(.TK_CODEBLOCK)) {
-            try self.out.append("<span>");
+            try self.out.append(self.allocator, "<span>");
             if (self.curTokenIs(.TK_BR)) {
-                try self.out.append("\n");
+                try self.out.append(self.allocator, "\n");
             } else {
-                try self.out.append(self.cur_token.literal);
+                try self.out.append(self.allocator, self.cur_token.literal);
             }
-            try self.out.append("</span>");
+            try self.out.append(self.allocator, "</span>");
 
             self.nextToken();
         }
         if (self.curTokenIs(.TK_CODEBLOCK)) {
-            try self.out.append("</code></pre>");
+            try self.out.append(self.allocator, "</code></pre>");
             self.nextToken();
         }
         // std.debug.print("{any}==>`{s}`\n", .{ self.cur_token.ty, self.cur_token.literal });
@@ -894,10 +898,10 @@ pub const Parser = struct {
                     self.nextToken();
                 }
                 if (self.curTokenIs(.TK_COLON)) {
-                    try self.table_context.align_style.append(.Center);
+                    try self.table_context.align_style.append(self.allocator, .Center);
                     self.nextToken();
                 } else {
-                    try self.table_context.align_style.append(.Left);
+                    try self.table_context.align_style.append(self.allocator, .Left);
                 }
 
                 while (self.curTokenIs(.TK_SPACE)) {
@@ -911,7 +915,7 @@ pub const Parser = struct {
                     self.nextToken();
                 }
                 if (self.curTokenIs(.TK_COLON)) {
-                    try self.table_context.align_style.append(.Right);
+                    try self.table_context.align_style.append(self.allocator, .Right);
                     self.nextToken();
                 }
                 while (self.curTokenIs(.TK_SPACE)) {
@@ -921,12 +925,12 @@ pub const Parser = struct {
 
             //table text
             if (self.curTokenIs(.TK_STR)) {
-                var list = std.ArrayList(Token).init(self.allocator);
+                var list = std.ArrayList(Token).empty;
                 while (self.curTokenIs(.TK_STR)) {
-                    try list.append(self.cur_token);
+                    try list.append(self.allocator, self.cur_token);
                     self.nextToken();
                 }
-                try self.table_list.append(list);
+                try self.table_list.append(self.allocator, list);
                 list.clearRetainingCapacity();
             }
 
@@ -952,65 +956,65 @@ pub const Parser = struct {
         var idx: usize = 0;
         const len = self.table_list.items.len;
         const algin_len = self.table_context.align_style.items.len;
-        try self.out.append("<table><thead>");
+        try self.out.append(self.allocator, "<table><thead>");
 
         while (idx < self.table_context.cols) : (idx += 1) {
             if (algin_len == 0) {
-                try self.out.append("<th>");
+                try self.out.append(self.allocator, "<th>");
             } else {
                 switch (self.table_context.align_style.items[idx]) {
                     .Left => {
-                        try self.out.append("<th style=\"text-align:left\">");
+                        try self.out.append(self.allocator, "<th style=\"text-align:left\">");
                     },
                     .Center => {
-                        try self.out.append("<th style=\"text-align:center\">");
+                        try self.out.append(self.allocator, "<th style=\"text-align:center\">");
                     },
                     .Right => {
-                        try self.out.append("<th style=\"text-align:right\">");
+                        try self.out.append(self.allocator, "<th style=\"text-align:right\">");
                     },
                 }
             }
             for (self.table_list.items[idx].items) |value| {
-                try self.out.append(trimRight(u8, value.literal, " "));
+                try self.out.append(self.allocator, trimRight(u8, value.literal, " "));
             }
-            try self.out.append("</th>");
+            try self.out.append(self.allocator, "</th>");
         }
 
         {
-            try self.out.append("</thead>");
-            try self.out.append("<tbody>");
+            try self.out.append(self.allocator, "</thead>");
+            try self.out.append(self.allocator, "<tbody>");
         }
 
         idx = self.table_context.cols;
         while (idx < len) : (idx += self.table_context.cols) {
-            try self.out.append("<tr>");
+            try self.out.append(self.allocator, "<tr>");
             var k: usize = idx;
             while (k < idx + self.table_context.cols) : (k += 1) {
                 if (algin_len == 0) {
-                    try self.out.append("<td>");
+                    try self.out.append(self.allocator, "<td>");
                 } else {
                     switch (self.table_context.align_style.items[
                         @mod(k, algin_len)
                     ]) {
                         .Left => {
-                            try self.out.append("<td style=\"text-align:left\">");
+                            try self.out.append(self.allocator, "<td style=\"text-align:left\">");
                         },
                         .Center => {
-                            try self.out.append("<td style=\"text-align:center\">");
+                            try self.out.append(self.allocator, "<td style=\"text-align:center\">");
                         },
                         .Right => {
-                            try self.out.append("<td style=\"text-align:right\">");
+                            try self.out.append(self.allocator, "<td style=\"text-align:right\">");
                         },
                     }
                 }
                 for (self.table_list.items[k].items) |value| {
-                    try self.out.append(trimRight(u8, value.literal, " "));
+                    try self.out.append(self.allocator, trimRight(u8, value.literal, " "));
                 }
-                try self.out.append("</td>");
+                try self.out.append(self.allocator, "</td>");
             }
-            try self.out.append("</tr>");
+            try self.out.append(self.allocator, "</tr>");
         }
-        try self.out.append("</tbody></table>");
+        try self.out.append(self.allocator, "</tbody></table>");
 
         self.resetTableContext();
         return;
@@ -1024,8 +1028,8 @@ pub const Parser = struct {
     }
 
     fn resetOrderList(self: *Parser) void {
-        for (self.unordered_list.items) |item| {
-            item.list.deinit();
+        for (self.unordered_list.items) |*item| {
+            item.list.deinit(self.allocator);
         }
         self.unordered_list.clearRetainingCapacity();
     }

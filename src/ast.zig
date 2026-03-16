@@ -1,8 +1,8 @@
 const std = @import("std");
-const String = @import("string").String;
 const ArrayList = std.ArrayList;
 const mem = std.mem;
 const UUID = @import("uuid").UUID;
+const String = @import("string").String;
 
 const asttype = enum {
     //zig fmt off

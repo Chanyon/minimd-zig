@@ -11,7 +11,6 @@ pub fn build(b: *std.Build) !void {
     const module = b.createModule(.{
         .root_source_file = b.path("src/lib.zig"),
         .imports = &.{
-            //
             .{ .name = "string", .module = zig_string },
             .{ .name = "uuid", .module = zig_uuid },
         },
@@ -35,17 +34,17 @@ pub fn build(b: *std.Build) !void {
     const lexer_step = b.step("lexer", "test lexer");
     lexer_step.dependOn(&run_uint_test2.step);
 
-    // const parser_test = b.addTest(.{
-    //     .root_module = b.addModule("parser", .{
-    //         .root_source_file = b.path("src/parse.zig"),
-    //         .target = target,
-    //         .optimize = optimize,
-    //     }),
-    // });
+    const parser_test = b.addTest(.{
+        .root_module = b.addModule("parser", .{
+            .root_source_file = b.path("src/parse.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
 
-    // const run_uint_test3 = b.addRunArtifact(parser_test);
-    // const parser_step = b.step("test_parse", "test parser");
-    // parser_step.dependOn(&run_uint_test3.step);
+    const run_uint_test3 = b.addRunArtifact(parser_test);
+    const parser_step = b.step("parse", "test parser");
+    parser_step.dependOn(&run_uint_test3.step);
 
     const ast_test = b.addTest(.{
         .root_module = b.addModule("ast", .{
@@ -84,11 +83,15 @@ pub fn build(b: *std.Build) !void {
     });
 
     const run_uint_test4 = b.addRunArtifact(main_tests);
+    const lib_tetst_step = b.step("lib", "test lib");
+    lib_tetst_step.dependOn(&run_uint_test4.step);
+
     const test_step = b.step("test", "Run library tests");
     test_step.dependOn(&run_uint_test4.step);
     test_step.dependOn(&run_uint_test2.step);
     // test_step.dependOn(&run_uint_test3.step);
     test_step.dependOn(&lexer_test.step);
+    test_step.dependOn(&ast_test.step);
 
     const install_docs = b.addInstallDirectory(.{
         .source_dir = b.path("src//lib.zig"),

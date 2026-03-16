@@ -1,12 +1,21 @@
 const std = @import("std");
 const Lexer = @import("lexer.zig").Lexer;
 pub const Parser = @import("parse.zig").Parser;
+pub const Parser2 = @import("parse2.zig");
 // markdown parser
 pub fn parser(allocator: std.mem.Allocator, source: []const u8) !Parser {
     var lexer = Lexer.newLexer(source);
     var p = Parser.NewParser(&lexer, allocator);
 
     try p.parseProgram();
+    return p;
+}
+
+pub fn parser2(allocator: std.mem.Allocator, source: []const u8) !Parser2 {
+    var lexer = Lexer.newLexer(source);
+    var p = Parser2.init(&lexer, allocator);
+    try p.parser();
+
     return p;
 }
 
@@ -43,7 +52,7 @@ test "markdown parser" {
         \\__hello__
     ;
 
-    var parse = try parser(al, text);
+    var parse = try parser2(al, text);
     defer parse.deinit();
     const str = try std.mem.join(al, "", parse.out.items);
     const res = str[0..str.len];

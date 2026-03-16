@@ -14,7 +14,7 @@ const Context = struct {
     list_type: UnorderList.ListType = .unorder,
 };
 
-fn init(lex: *Lexer, al: std.mem.Allocator) Parser {
+pub fn init(lex: *Lexer, al: std.mem.Allocator) Parser {
     var p = Parser{
         //
         .allocator = al,
