@@ -2,6 +2,7 @@ const std = @import("std");
 const Lexer = @import("lexer.zig").Lexer;
 pub const Parser = @import("parse.zig").Parser;
 pub const Parser2 = @import("parse2.zig");
+pub const TreeNode = @import("ast.zig").TreeNode;
 // markdown parser
 pub fn parser(allocator: std.mem.Allocator, source: []const u8) !Parser {
     var lexer = Lexer.newLexer(source);
@@ -11,12 +12,12 @@ pub fn parser(allocator: std.mem.Allocator, source: []const u8) !Parser {
     return p;
 }
 
-pub fn parser2(allocator: std.mem.Allocator, source: []const u8) !Parser2 {
+pub fn parser2(allocator: std.mem.Allocator, source: []const u8) !TreeNode {
     var lexer = Lexer.newLexer(source);
     var p = Parser2.init(&lexer, allocator);
-    try p.parser();
+    const tree = try p.parser();
 
-    return p;
+    return tree;
 }
 
 test "markdown parser" {
@@ -54,7 +55,7 @@ test "markdown parser" {
 
     var parse = try parser2(al, text);
     defer parse.deinit();
-    const str = try std.mem.join(al, "", parse.out.items);
+    const str = try std.mem.join(al, "", parse.stmts.items);
     const res = str[0..str.len];
     _ = res;
     // std.debug.print("{s} \n", .{res});
