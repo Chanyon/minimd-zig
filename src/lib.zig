@@ -55,8 +55,7 @@ test "markdown parser" {
 
     var parse = try parser2(al, text);
     defer parse.deinit();
-    const str = try std.mem.join(al, "", parse.stmts.items);
-    const res = str[0..str.len];
+    const res = try parse.string();
     _ = res;
     // std.debug.print("{s} \n", .{res});
 }

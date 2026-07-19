@@ -350,7 +350,7 @@ pub const Link = struct {
     pub fn string(self: *Self) []const u8 {
         self.str.concat("<a href=\"") catch return "";
 
-        const href = std.mem.trimRight(u8, self.herf.string(), " ");
+        const href = std.mem.trimEnd(u8, self.herf.string(), " ");
         if (std.mem.startsWith(u8, href, "http")) {
             self.str.concat(href) catch return "";
         } else {

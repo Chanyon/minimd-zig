@@ -14,7 +14,12 @@ pub const UUID = struct {
     pub fn init() UUID {
         var uuid = UUID{ .bytes = undefined };
 
-        crypto.random.bytes(&uuid.bytes);
+        // crypto.random.bytes(&uuid.bytes);
+        // std.Random.DefaultPrng.init(3);
+        // _ = std.crypto.auth.hmac.HmacSha1.init(&uuid.bytes);
+        var rand = std.Random.RomuTrio.init(16);
+        const s = rand.random();
+        std.Random.bytes(s, &uuid.bytes);
         // Version 4
         uuid.bytes[6] = (uuid.bytes[6] & 0x0f) | 0x40;
         // Variant 1
@@ -107,7 +112,7 @@ pub const UUID = struct {
 };
 
 // Zero UUID
-pub const zero: UUID = .{ .bytes = .{0} ** 16 };
+pub const zero: UUID = .{ .bytes = .{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 } };
 
 // Convenience function to return a new v4 UUID.
 pub fn newV4() UUID {

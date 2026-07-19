@@ -29,7 +29,7 @@ pub const String = struct {
         // for windows non-ascii characters
         // check if the system is windows
         if (builtin.os.tag == std.Target.Os.Tag.windows) {
-            _ = std.os.windows.kernel32.SetConsoleOutputCP(65001);
+            // _ = std.os.windows.kernel32.SetConsoleOutputCP(65001);
         }
 
         return .{

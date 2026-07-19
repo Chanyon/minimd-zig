@@ -8,7 +8,7 @@ pub fn build(b: *std.Build) !void {
 
     const zig_string = b.dependency("string", .{}).module("string");
     const zig_uuid = b.dependency("uuid", .{}).module("uuid");
-    const module = b.createModule(.{
+    _ = b.addModule("minimd", .{
         .root_source_file = b.path("src/lib.zig"),
         .imports = &.{
             .{ .name = "string", .module = zig_string },
@@ -18,12 +18,10 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
 
-    try b.modules.put(b.dupe("minimd"), module);
-
     // zig build test_lex
     const lexer_test = b.addTest(.{
         .name = "lexer",
-        .root_module = b.addModule("lexer", .{
+        .root_module = b.createModule(.{
             .root_source_file = b.path("src/lexer.zig"),
             .target = target,
             .optimize = optimize,
@@ -35,7 +33,7 @@ pub fn build(b: *std.Build) !void {
     lexer_step.dependOn(&run_uint_test2.step);
 
     const parser_test = b.addTest(.{
-        .root_module = b.addModule("parser", .{
+        .root_module = b.createModule(.{
             .root_source_file = b.path("src/parse.zig"),
             .target = target,
             .optimize = optimize,
@@ -47,7 +45,7 @@ pub fn build(b: *std.Build) !void {
     parser_step.dependOn(&run_uint_test3.step);
 
     const ast_test = b.addTest(.{
-        .root_module = b.addModule("ast", .{
+        .root_module = b.createModule(.{
             .root_source_file = b.path("src/ast.zig"),
             .target = target,
             .optimize = optimize,
@@ -61,7 +59,7 @@ pub fn build(b: *std.Build) !void {
 
     const parse2_test = b.addTest(.{
         .name = "parse2",
-        .root_module = b.addModule("parse2", .{
+        .root_module = b.createModule(.{
             .root_source_file = b.path("src/parse2.zig"),
             .target = target,
             .optimize = optimize,
@@ -75,12 +73,14 @@ pub fn build(b: *std.Build) !void {
 
     const main_tests = b.addTest(.{
         .name = "lib",
-        .root_module = b.addModule("lib", .{
+        .root_module = b.createModule(.{
             .root_source_file = b.path("src/lib.zig"),
             .target = target,
             .optimize = optimize,
         }),
     });
+    main_tests.root_module.addImport("string", zig_string);
+    main_tests.root_module.addImport("uuid", zig_uuid);
 
     const run_uint_test4 = b.addRunArtifact(main_tests);
     const lib_tetst_step = b.step("lib", "test lib");

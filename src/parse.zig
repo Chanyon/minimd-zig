@@ -1,5 +1,5 @@
 const std = @import("std");
-const trimRight = std.mem.trimRight;
+const trimRight = std.mem.trimEnd;
 const Lexer = @import("lexer.zig").Lexer;
 const Token = @import("token.zig").Token;
 const TokenType = @import("token.zig").TokenType;

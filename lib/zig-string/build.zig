@@ -10,7 +10,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
-    const test_mod = b.addModule("string-tests", .{
+    const test_mod = b.createModule(.{
         .root_source_file = b.path("zig-string-tests.zig"),
         .target = target,
         .optimize = optimize,
